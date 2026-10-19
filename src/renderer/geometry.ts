@@ -1,7 +1,7 @@
 export interface Rect { left: number; top: number; right: number; bottom: number; width: number; height: number }
 export interface Point { x: number; y: number }
-export interface RouteEdge { key: string; from: Rect; to: Rect }
-export interface RoutingOptions { bounds?: Rect; cards?: readonly Rect[] }
+export interface RouteEdge { key: string; from: Rect; to: Rect; fromAnchor?: 'title' | 'bar'; toAnchor?: 'title' | 'bar' }
+export interface RoutingOptions { bounds?: Rect; cards?: readonly Rect[]; layout?: 'board' | 'table' | 'roadmap' }
 export interface RoutedEdge {
   key: string;
   path: string;
@@ -19,6 +19,7 @@ interface PlannedEdge {
   endSide: Side;
   lane: number;
   x?: number;
+  inset?: number;
   constrained: boolean;
 }
 interface Port { edge: RouteEdge; end: 'from' | 'to'; rect: Rect; y: number }
@@ -45,22 +46,26 @@ function roundedPath(points: readonly Point[]): string {
   }, `M ${point(points[0]!)}`) + ` L ${point(points[points.length - 1]!)}`;
 }
 
-function columnPlans(edges: readonly RouteEdge[], column: readonly Rect[], cards: readonly Rect[], bounds?: Rect): PlannedEdge[] {
-  const left = Math.min(...column.map(card => card.left));
+function columnPlans(edges: readonly RouteEdge[], column: readonly Rect[], cards: readonly Rect[], options: RoutingOptions): PlannedEdge[] {
+  const { bounds } = options;
+  const table = options.layout === 'table';
+  const naturalLeft = Math.min(...column.map(card => card.left));
+  const left = table && bounds ? Math.max(naturalLeft, bounds.left) : naturalLeft;
   const right = Math.max(...column.map(card => card.right));
   const top = Math.min(...edges.flatMap(edge => [edge.from.top, edge.to.top]));
   const bottom = Math.max(...edges.flatMap(edge => [edge.from.bottom, edge.to.bottom]));
   const outside = cards.filter(card => card.right <= left || card.left >= right);
   const relevant = outside.filter(card => card.top <= bottom && card.bottom >= top);
   const unboundedGutter = 12 + (edges.length - 1) * 14;
-  const leftLimit = Math.max(bounds ? bounds.left + 4 : left - unboundedGutter, ...relevant.filter(card => card.right <= left).map(card => card.right + 4));
+  const leftLimit = Math.max(bounds ? bounds.left + 4 : left - unboundedGutter, table ? left - 64 : -Infinity, ...relevant.filter(card => card.right <= left).map(card => card.right + 4));
   const rightLimit = Math.min(bounds ? bounds.right - 4 : right + unboundedGutter, ...relevant.filter(card => card.left >= right).map(card => card.left - 4));
   const room: Record<Side, number> = { left: Math.max(0, left - leftLimit), right: Math.max(0, rightLimit - right) };
   const ordered = edges.map(edge => ({ edge, interval: verticalInterval(edge) })).sort((a, b) => b.interval[1] - b.interval[0] - (a.interval[1] - a.interval[0]) || compare(a.edge.key, b.edge.key));
   const lanes: Record<Side, (readonly [number, number])[][]> = { left: [], right: [] };
   const assigned: PlannedEdge[] = [];
   for (const { edge, interval } of ordered) {
-    const choices = (['left', 'right'] as const).map(side => {
+    const sides: readonly Side[] = table ? ['left'] : ['left', 'right'];
+    const choices = sides.map(side => {
       const available = lanes[side].findIndex(intervals => intervals.every(other => !intersects(other, interval)));
       const lane = available < 0 ? lanes[side].length : available;
       return { side, lane, score: Math.max(0, 12 + lane * 14 - room[side]) * 1000 + lane * 3 - Math.min(room[side], 26) / 100 };
@@ -71,14 +76,17 @@ function columnPlans(edges: readonly RouteEdge[], column: readonly Rect[], cards
     else lanes[choice.side].push([interval]);
     assigned.push({ edge, side: choice.side, startSide: choice.side, endSide: choice.side, lane: choice.lane, constrained: false });
   }
+  const requiredLeft = 12 + Math.max(0, lanes.left.length - 1) * 14;
+  const inset = table && room.left < requiredLeft ? Math.max(0, Math.min(32, ...column.map(card => (bounds ? Math.min(card.right, bounds.right) - Math.max(card.left, bounds.left) : card.width) / 4))) : 0;
+  const leftRoom = table ? Math.max(0, left + inset - leftLimit) : room.left;
   const scales: Record<Side, number> = {
-    left: Math.min(1, room.left / (12 + Math.max(0, lanes.left.length - 1) * 14)),
+    left: Math.min(1, leftRoom / requiredLeft),
     right: Math.min(1, room.right / (12 + Math.max(0, lanes.right.length - 1) * 14)),
   };
   return assigned.map(plan => {
     const side = plan.side as Side;
     const scale = scales[side];
-    return { ...plan, x: (side === 'left' ? left : right) + (side === 'left' ? -1 : 1) * (12 + plan.lane * 14) * scale, constrained: scale < 1 };
+    return { ...plan, x: (side === 'left' ? left + inset : right) + (side === 'left' ? -1 : 1) * (12 + plan.lane * 14) * scale, inset, constrained: scale < 1 || inset > 0 };
   });
 }
 
@@ -112,16 +120,19 @@ export function routeEdges(edges: readonly RouteEdge[], options: RoutingOptions 
   if (new Set(edges.map(edge => edge.key)).size !== edges.length) throw new Error('Route edge keys must be unique');
   const ordered = [...edges].sort((a, b) => compare(a.key, b.key));
   const cards = [...new Map([...(options.cards ?? []), ...ordered.flatMap(edge => [edge.from, edge.to])].map(card => [rectKey(card), card])).values()].sort((a, b) => compare(rectKey(a), rectKey(b)));
-  const columns = cards.reduce<Rect[][]>((groups, card) => {
+  const columns = options.layout === 'roadmap' ? [] : options.layout === 'table' ? [cards] : cards.reduce<Rect[][]>((groups, card) => {
     const matches = groups.filter(group => group.some(other => sameColumn(card, other)));
     return [...groups.filter(group => !matches.includes(group)), [...matches.flat(), card]];
   }, []);
-  const plans = columns.flatMap(column => {
+  const titleEdges = options.layout === 'roadmap' ? ordered.filter(edge => edge.fromAnchor === 'title' && edge.toAnchor === 'title') : [];
+  const titleRects = [...new Map(titleEdges.flatMap(edge => [edge.from, edge.to]).map(rect => [rectKey(rect), rect])).values()];
+  const titlePlans = titleEdges.length ? columnPlans(titleEdges, titleRects, cards, options) : [];
+  const plans = [...titlePlans, ...columns.flatMap(column => {
     const keys = new Set(column.map(rectKey));
     const columnEdges = ordered.filter(edge => keys.has(rectKey(edge.from)) && keys.has(rectKey(edge.to)));
     if (!columnEdges.length) return [];
-    return columnPlans(columnEdges, column, cards, options.bounds);
-  });
+    return columnPlans(columnEdges, column, cards, options);
+  })];
   const plannedKeys = new Set(plans.map(plan => plan.edge.key));
   const direct: PlannedEdge[] = ordered.filter(edge => !plannedKeys.has(edge.key)).map(edge => {
     const rightward = center(edge.to).x >= center(edge.from).x;
@@ -129,19 +140,24 @@ export function routeEdges(edges: readonly RouteEdge[], options: RoutingOptions 
   });
   const allPlans = [...plans, ...direct];
   const ports = connectionPorts(allPlans);
+  const fit = (value: Point): Point => options.layout && options.layout !== 'board' && options.bounds ? { x: Math.max(options.bounds.left, Math.min(options.bounds.right, value.x)), y: Math.max(options.bounds.top, Math.min(options.bounds.bottom, value.y)) } : value;
   return allPlans.map(plan => {
     const port = ports.get(plan.edge)!;
-    const start = { x: plan.startSide === 'left' ? plan.edge.from.left : plan.edge.from.right, y: port.from };
-    const targetX = plan.endSide === 'left' ? plan.edge.to.left - 3 : plan.edge.to.right + 3;
-    const end = { x: options.bounds ? Math.max(options.bounds.left, Math.min(options.bounds.right, targetX)) : targetX, y: port.to };
+    const tableLeft = (rect: Rect): number => Math.max(rect.left, options.bounds?.left ?? rect.left) + (plan.inset ?? 0);
+    const sourceX = options.layout === 'table' ? tableLeft(plan.edge.from) : plan.startSide === 'left' ? plan.edge.from.left : plan.edge.from.right;
+    const start = fit({ x: sourceX, y: port.from });
+    const targetX = options.layout === 'table' ? tableLeft(plan.edge.to) - Math.min(3, Math.max(0, tableLeft(plan.edge.to) - plan.x!) / 2) : plan.endSide === 'left' ? plan.edge.to.left - 3 : plan.edge.to.right + 3;
+    const end = fit({ x: options.bounds ? Math.max(options.bounds.left, Math.min(options.bounds.right, targetX)) : targetX, y: port.to });
     if (plan.side !== 'direct') {
-      const points = [start, { x: plan.x!, y: start.y }, { x: plan.x!, y: end.y }, end];
-      return { key: plan.edge.key, path: roundedPath(points), label: { x: plan.x!, y: (start.y + end.y) / 2 }, lane: plan.lane, side: plan.side, points, constrained: plan.constrained };
+      const laneX = fit({ x: plan.x!, y: start.y }).x;
+      const points = [start, { x: laneX, y: start.y }, { x: laneX, y: end.y }, end];
+      return { key: plan.edge.key, path: roundedPath(points), label: { x: laneX, y: (start.y + end.y) / 2 }, lane: plan.lane, side: plan.side, points, constrained: plan.constrained };
     }
     const sign = plan.startSide === 'right' ? 1 : -1;
     const bend = Math.max(32, Math.abs(end.x - start.x) / 2);
-    const controls = [{ x: start.x + sign * bend, y: start.y }, { x: end.x - sign * bend, y: end.y }];
-    return { key: plan.edge.key, path: `M ${point(start)} C ${point(controls[0]!)}, ${point(controls[1]!)}, ${point(end)}`, label: { x: (start.x + controls[0]!.x * 3 + controls[1]!.x * 3 + end.x) / 8, y: (start.y + end.y) / 2 }, lane: 0, side: plan.side, points: [start, ...controls, end], constrained: false };
+    const originalControls = [{ x: start.x + sign * bend, y: start.y }, { x: end.x - sign * bend, y: end.y }];
+    const controls = originalControls.map(fit);
+    return { key: plan.edge.key, path: `M ${point(start)} C ${point(controls[0]!)}, ${point(controls[1]!)}, ${point(end)}`, label: { x: (start.x + controls[0]!.x * 3 + controls[1]!.x * 3 + end.x) / 8, y: (start.y + end.y) / 2 }, lane: 0, side: plan.side, points: [start, ...controls, end], constrained: controls.some((control, index) => control.x !== originalControls[index]!.x || control.y !== originalControls[index]!.y) };
   }).sort((a, b) => compare(a.key, b.key));
 }
 

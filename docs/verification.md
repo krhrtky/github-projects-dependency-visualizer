@@ -1,5 +1,23 @@
 # 検証結果と制限
 
+## 0.3.0（2026-10-19）
+
+| 検証 | 結果 |
+| --- | --- |
+| TypeScript strict / 本番ビルド | 成功 |
+| 単体・DOM・描画・Security・Lifecycle | 9ファイル、102テスト成功 |
+| Chromium 拡張統合 | 8シナリオ成功 |
+| 配布パッケージ | 0.3.0 の MV3 Manifest と実行ファイル計6件を ZIP 直下に配置、SHA-256 を生成 |
+| 画面確認 | 合成データの Board / Table / Roadmap を画像で確認 |
+
+追加検証では、Table のタイトルセルだけを使う Issue 識別、他フィールドの参照の除外、Roadmap の同一 Issue バーへの接続、バーがない・非表示・期間外・固定列の背後にある場合のタイトルへの接続を確認しました。固定ヘッダーの背後に隠れた行の除外と、部分的に見えるタイトル・バーの矩形の切り詰めも検証しています。
+
+同じ root 要素を再利用した Table→Roadmap→Board の切り替え、仮想化された行の削除・復帰、縦横スクロール、バー移動、最長経路の絞り込み、Project 間と Project 外への SPA 遷移を統合テストで確認しました。Roadmap のタイトル同士は空きガターに迂回し、タイトルの文字を横断しないことを経路と画像で確認しています。
+
+DOM の根拠は GitHub の[公式配信コード](https://github.githubassets.com/assets/memex-5f59d439a34fcfd4-f56c635816533e67.js.map)と[公式 CSS](https://github.githubassets.com/assets/memex.e91539c9150e5d7b.module.css)です。実行検証には合成データの Fixture と模擬 API を使っています。実 GitHub のログイン済み Table / Roadmap を描画して DOM を照合した検証とは区別します。GitHub の内部構造の将来の互換性は保証しません。
+
+画面例: [Table](table-view.png) / [Roadmap](roadmap-view.png)。0.3.0 も可視 Issue 間のみを解析し、最長経路は依存の辺数で計算します。追加の API・認証権限はありません。環境と既存機能の検証方法は以下の記録を参照してください。
+
 ## 0.2.0（2026-10-19）
 
 | 検証 | 結果 |

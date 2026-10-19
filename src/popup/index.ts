@@ -28,11 +28,12 @@ async function update(): Promise<void> {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id === undefined) throw new Error();
     const status = await chrome.tabs.sendMessage(tab.id, { type: 'PAGE_STATUS' }) as PageStatus;
-    const states = { off: '表示は OFF です。', 'no-board': 'Board View を検出できません。Board を選択し、未対応の DOM は README を確認してください。', 'no-cards': '表示中の Issue Card を識別できません。フィルタや DOM Adapter を確認してください。', loading: '依存関係を取得しています…', ready: '取得完了', partial: '一部の Issue を取得できません。取得できた関係のみ表示しています。', error: '依存関係を取得できません。' };
-    board.textContent = `${states[status.state]} カード ${status.cards} / 関係 ${status.edges} / 失敗 ${status.failed}${status.truncated ? '（上限200 Issue）' : ''}`;
+    const states = { off: '表示は OFF です。', 'no-view': '対応する Project View を検出できません。Board・Table・Roadmap を開いてください。', 'no-cards': '表示中の Issue を識別できません。フィルタや DOM Adapter を確認してください。', loading: '依存関係を取得しています…', ready: '取得完了', partial: '一部の Issue を取得できません。取得できた関係のみ表示しています。', error: '依存関係を取得できません。' };
+    const view = status.view ? `${{ board: 'Board', table: 'Table', roadmap: 'Roadmap' }[status.view]} / ` : '';
+    board.textContent = `${view}${states[status.state]} ${status.view && status.view !== 'board' ? '項目' : 'カード'} ${status.cards} / 関係 ${status.edges} / 失敗 ${status.failed}${status.truncated ? '（上限200 Issue）' : ''}`;
     if (status.analysis) {
       const data = status.analysis;
-      analysis.textContent = `${data.maxDepth === null ? `循環 ${data.cycleNodes} カード・最長経路は未算出` : `最長 ${data.maxDepth} 段`} / 分岐 ${data.branches} / 合流 ${data.merges}。${status.state === 'loading' ? '取得中の暫定値。' : status.failed || status.truncated ? '解析は不完全です。' : ''}Board 右下のパネルで経路を絞り込めます。`;
+      analysis.textContent = `${data.maxDepth === null ? `循環 ${data.cycleNodes} 件・最長経路は未算出` : `最長 ${data.maxDepth} 段`} / 分岐 ${data.branches} / 合流 ${data.merges}。${status.state === 'loading' ? '取得中の暫定値。' : status.failed || status.truncated ? '解析は不完全です。' : ''}画面右下のパネルで経路を絞り込めます。`;
     }
     problems.push(...status.errors);
   } catch { board.textContent = '対象の GitHub Projects タブを開いてください。拡張機能を読み込んだ直後はタブを再読み込みしてください。'; }

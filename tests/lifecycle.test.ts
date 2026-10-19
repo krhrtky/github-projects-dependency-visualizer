@@ -41,7 +41,7 @@ describe('lifecycle', () => {
  });
  it('releases resources on view switches and SPA navigation', async () => {
    await settle(); const root = document.querySelector('#board')!;
-   root.setAttribute('data-testid', 'table'); await settle(); expect(controller.status.state).toBe('no-board'); expect(document.getElementById(OVERLAY_ID)).toBeNull();
+   root.setAttribute('data-testid', 'table'); await settle(); expect(controller.status.state).toBe('no-view'); expect(document.getElementById(OVERLAY_ID)).toBeNull();
    root.setAttribute('data-testid', 'board-view'); await settle(); expect(controller.status.state).toBe('ready');
    history.pushState({}, '', '/acme/app'); window.dispatchEvent(new PopStateEvent('popstate')); await settle(); expect(document.getElementById(OVERLAY_ID)).toBeNull();
    history.pushState({}, '', '/orgs/acme/projects/1'); window.dispatchEvent(new PopStateEvent('popstate')); await settle(); expect(controller.status.state).toBe('ready');

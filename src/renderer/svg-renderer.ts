@@ -74,6 +74,7 @@ export class SvgRenderer {
   render(cards: BoardCard[], dependencies: Dependency[], bounds: Rect, context: AnalysisContext = {}): number {
     this.mount();
     this.input = { cards, dependencies, bounds, context };
+    const layout = context.layout ?? 'board';
     const graphSignature = JSON.stringify([cards.map(c => issueKey(c.issue)), dependencies.map(edgeKey)]);
     if (graphSignature !== this.graphSignature) {
       this.graphSignature = graphSignature; this.analysis = analyzeGraph(dependencies, cards.map(c => c.issue));
@@ -82,7 +83,7 @@ export class SvgRenderer {
     if (this.filter.issue && !analysis.nodes.has(this.filter.issue)) this.filter = { ...this.filter, issue: '' };
     if (this.filter.edge && !analysis.edges.some(edge => edgeKey(edge) === this.filter.edge)) this.filter = { ...this.filter, edge: '' };
     if (analysis.hasCycle || !analysis.edges.length) this.filter = { ...this.filter, criticalOnly: false };
-    const signature = JSON.stringify([cards.map(c => [issueKey(c.issue), c.rect.left, c.rect.top, c.rect.width, c.rect.height]), graphSignature, [bounds.left, bounds.top, bounds.width, bounds.height], this.filter, context]);
+    const signature = JSON.stringify([cards.map(c => [issueKey(c.issue), c.rect.left, c.rect.top, c.rect.width, c.rect.height, c.anchor]), graphSignature, [bounds.left, bounds.top, bounds.width, bounds.height], this.filter, context]);
     if (signature === this.signature) return this.edgeCount;
     this.signature = signature;
     for (const [key, value] of Object.entries({ x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height })) this.clip!.setAttribute(key, String(value));
@@ -90,16 +91,16 @@ export class SvgRenderer {
     for (const card of cards) byIssue.set(issueKey(card.issue), [...(byIssue.get(issueKey(card.issue)) ?? []), card]);
     const fragment = document.createDocumentFragment();
     const graph = [...analysis.edges].sort((a, b) => edgeKey(a).localeCompare(edgeKey(b)));
-    const routeSignature = JSON.stringify([cards.map(c => [issueKey(c.issue), c.rect.left, c.rect.top, c.rect.width, c.rect.height]), graphSignature, [bounds.left, bounds.top, bounds.width, bounds.height]]);
+    const routeSignature = JSON.stringify([cards.map(c => [issueKey(c.issue), c.rect.left, c.rect.top, c.rect.width, c.rect.height, c.anchor]), graphSignature, [bounds.left, bounds.top, bounds.width, bounds.height], layout]);
     if (routeSignature !== this.routeSignature) {
       const pairs = graph.map(edge => {
         const fromCards = byIssue.get(issueKey(edge.blocker))!;
         const toCards = byIssue.get(issueKey(edge.blocked))!;
         const candidates = fromCards.flatMap(from => toCards.map(to => ({ from, to, distance: Math.hypot(from.rect.left - to.rect.left, from.rect.top - to.rect.top) })));
         const pair = candidates.sort((a, b) => a.distance - b.distance)[0]!;
-        return { key: edgeKey(edge), from: pair.from.rect, to: pair.to.rect };
+        return { key: edgeKey(edge), from: pair.from.rect, to: pair.to.rect, fromAnchor: pair.from.anchor, toAnchor: pair.to.anchor };
       });
-      this.routes = new Map(routeEdges(pairs, { bounds, cards: cards.map(card => card.rect) }).map(route => [route.key, route]));
+      this.routes = new Map(routeEdges(pairs, { bounds, cards: cards.map(card => card.rect), layout }).map(route => [route.key, route]));
       this.routeSignature = routeSignature;
     }
     const routes = this.routes;
@@ -126,7 +127,8 @@ export class SvgRenderer {
     }
     this.paths!.replaceChildren(fragment, labels);
     const badges = document.createDocumentFragment();
-    for (const card of cards) {
+    const badgeCards = layout === 'board' ? cards : [];
+    for (const card of badgeCards) {
       const key = issueKey(card.issue); const node = analysis.nodes.get(key)!;
       if (!node.inDegree && !node.outDegree) continue;
       if (this.filter.criticalOnly && !node.critical) continue;

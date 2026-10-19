@@ -7,8 +7,9 @@ export type Request = { type: 'GET_STATE' | 'LOGOUT' | 'REFRESH' } | { type: 'SE
 export type IssueResult = { issue: IssueIdentity; ok: true; dependencies: Dependency[] } | { issue: IssueIdentity; ok: false; error: PublicError };
 export type Reply<T> = { ok: true; data: T } | { ok: false; error: PublicError };
 export interface PageStatus {
-  state: 'off' | 'no-board' | 'no-cards' | 'loading' | 'ready' | 'partial' | 'error';
+  state: 'off' | 'no-view' | 'no-cards' | 'loading' | 'ready' | 'partial' | 'error';
   cards: number; edges: number; failed: number; errors: PublicError[]; truncated: boolean;
+  view?: 'board' | 'table' | 'roadmap';
   analysis?: { maxDepth: number | null; branches: number; merges: number; cycleNodes: number };
 }
 function exactKeys(o: Record<string, unknown>, keys: string[]): boolean { return Object.keys(o).sort().join(',') === keys.sort().join(','); }

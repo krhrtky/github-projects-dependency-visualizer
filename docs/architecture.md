@@ -116,3 +116,29 @@ Domain は DOM に依存しない純粋な解析を行う。Renderer はノー�
 ソース ZIP を展開しても Chrome に直接読み込めないため、型検査・単体・拡張統合テストに成功したビルドの `dist/` を GitHub Actions Artifact として保存する。バージョンタグでは同じ検証後、ZIP と SHA-256 を Release へ公開する。Artifact には保存期限とログイン要件があるため、恒久配布には Release の添付ファイルも提供する。
 
 ZIP の直下に manifest.json を配置し、許可した実行ファイルだけを含める。ソースマップ・認証情報らしい値・想定外のファイル・シンボリックリンクはパッケージ処理で拒否する。実行に必要な npm 依存やサーバーは追加しない。Chrome Web Store の審査・更新基盤は今回の配布範囲に含めない。
+
+# ADR-006: Table / Roadmap の行とタイムラインを接続する
+
+状態: 採用 / 日付: 2026-10-19。ADR-001 / 002 の Board 限定の検出範囲を拡張する。
+
+## 背景
+
+同じ Project の Table / Roadmap でも依存関係を調べたい。View のルート ID は共通で、行の別フィールドにも Issue リンクが入るため、ルート ID や行内の全リンクだけでは接続先を特定できない。
+
+## 選択肢と決定
+
+| 論点 | 選択肢 | 決定と理由 |
+| --- | --- | --- |
+| 検出 | 汎用の Issue リンク / Project 内の既知構造 | Project URL に限定し、Table は grid 内の row / rowheader、Roadmap は literal の roadmap-row / roadmap-table-cell で検出する。 |
+| Issue の特定 | 行全体 / タイトルセル | rowheader のリンクだけを使う。他の列にある別 Issue の参照を混同しない。 |
+| Table の接続先 | 行全体 / タイトルセル | タイトルセルの矩形と左側のレーンを使う。他のフィールドを横断する線を減らす。 |
+| Roadmap の接続先 | タイトルだけ / 日付から位置を推測 / 表示バー優先 | タイトルで Issue を確定し、同じ Issue URL の可視バーに接続する。バーがない・表示期間外・固定列に隠れている場合は、可視タイトルセルに接続する。 |
+| 遮蔽 | 祖先の overflow だけ / 固定列とヘッダーも考慮 | Roadmap の sticky タイトル・日付列の右端と、sticky ヘッダーの下端を可視範囲に反映する。overscan で DOM に残る隠れた行へ接続しない。 |
+| 数値の表示 | すべての行にバッジ / パネルに集約 | Board のバッジは維持し、狭い Table / Roadmap 行では項目選択から深さ・入出次数・下流の影響を表示する。 |
+| 切り替え | DOM 要素だけで判定 / 要素と layout で判定 | 同じ root を再利用する View 切り替えでも監視と描画を更新する。経路キャッシュにも layout を含める。 |
+
+## 根拠と帰結
+
+GitHub の[公開 Project](https://github.com/orgs/github/projects/4247) が配信する [JavaScript の source map](https://github.githubassets.com/assets/memex-5f59d439a34fcfd4-f56c635816533e67.js.map) の TableCell / InteractiveItemTitle / RoadmapRow / RoadmapPill / RoadmapHeader の実装で、属性と Issue URL の対応を確認した。[公式 CSS](https://github.githubassets.com/assets/memex.e91539c9150e5d7b.module.css) で固定列・ヘッダーの sticky 配置も確認した。これらは内部実装であり、公開された互換性契約ではない。実装ソース自体は成果物に同梱しない。
+
+合成データの Fixture で、タイトルとバーの一致・不一致、隠れたバー、日付なし、固定列の背後、ヘッダーの背後、他フィールドの参照、仮想化、View 切り替えを検証する。新たな API エンドポイント・認証権限は追加しない。解析対象と最長経路の定義は可視 Issue 間のままとする。
