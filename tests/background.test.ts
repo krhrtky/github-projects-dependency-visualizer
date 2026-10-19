@@ -19,6 +19,13 @@ beforeEach(async () => {
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe('background settings do not depend on sleeping tabs', () => {
+ it('stores classic PATs in the session and returns only authentication state', async () => {
+   const token = 'ghp_' + 'x'.repeat(36);
+   expect(await request({ type: 'SET_TOKEN', token })).toEqual({ ok: true, data: { enabled: false, authenticated: true } });
+   expect(session).toEqual({ token });
+   expect(local).toEqual({});
+   expect(await request({ type: 'GET_STATE' })).toEqual({ ok: true, data: { enabled: false, authenticated: true } });
+ });
  it('skips frozen and discarded tabs and keeps settings readable', async () => {
    tabs = [{ id: 1 }, { id: 2, frozen: true }, { id: 3, discarded: true }];
    expect(await request({ type: 'SET_TOKEN', token: 'github_pat_' + 'x'.repeat(50) })).toEqual({ ok: true, data: { enabled: false, authenticated: true } });

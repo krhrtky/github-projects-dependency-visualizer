@@ -13,12 +13,15 @@ export interface PageStatus {
   analysis?: { maxDepth: number | null; branches: number; merges: number; cycleNodes: number };
 }
 function exactKeys(o: Record<string, unknown>, keys: string[]): boolean { return Object.keys(o).sort().join(',') === keys.sort().join(','); }
+export function isPersonalAccessToken(value: unknown): value is string {
+  return typeof value === 'string' && value === value.trim() && /^(?:github_pat_[A-Za-z0-9_]{20,250}|ghp_[A-Za-z0-9]{36})$/.test(value);
+}
 export function parseRequest(value: unknown): Request | null {
   if (!value || typeof value !== 'object') return null;
   const m = value as Record<string, unknown>;
   if (['GET_STATE', 'LOGOUT', 'REFRESH'].includes(String(m.type)) && exactKeys(m, ['type'])) return m as Request;
   if (m.type === 'SET_ENABLED' && typeof m.enabled === 'boolean' && exactKeys(m, ['type', 'enabled'])) return m as Request;
-  if (m.type === 'SET_TOKEN' && typeof m.token === 'string' && /^github_pat_[A-Za-z0-9_]{20,250}$/.test(m.token) && exactKeys(m, ['type', 'token'])) return m as Request;
+  if (m.type === 'SET_TOKEN' && isPersonalAccessToken(m.token) && exactKeys(m, ['type', 'token'])) return m as Request;
   if (m.type === 'DEPENDENCIES' && Array.isArray(m.issues) && m.issues.length <= MAX_ISSUES && m.issues.every(isIssue) && exactKeys(m, ['type', 'issues'])) return m as Request;
   return null;
 }

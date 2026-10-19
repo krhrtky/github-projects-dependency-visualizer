@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { GitHubApi } from '../src/background/github-api';
 import { DependencyRepository } from '../src/background/dependency-repository';
+import { safeError } from '../src/shared/errors';
 const issue = { owner: 'acme', repo: 'app', number: 2 };
 const row = { html_url: 'https://github.com/acme/api/issues/1', number: 1 };
 const auth = { getToken: async () => 'secret-fixture-token' };
@@ -25,6 +26,24 @@ describe('fixed read-only GitHub API', () => {
  it('returns an empty list for no dependencies', async () => { expect(await client(vi.fn().mockResolvedValue(response([]))).blockedBy(issue)).toEqual([]); });
  it.each([[401, 'AUTH_INVALID'], [403, 'FORBIDDEN'], [404, 'NOT_FOUND'], [429, 'RATE_LIMIT'], [500, 'API']])('handles HTTP %i distinctly', async (status, code) => {
    await expect(client(vi.fn().mockResolvedValue(response({}, status as number))).blockedBy(issue)).rejects.toMatchObject({ code });
+ });
+ it('reports SSO authorization without exposing response data and permits recovery', async () => {
+   const fetcher = vi.fn()
+     .mockResolvedValueOnce(response({ message: 'private organization details' }, 403, { 'X-GitHub-SSO': 'required; url=https://github.com/orgs/acme/sso?authorization_request=private' }))
+     .mockResolvedValueOnce(response([]));
+   const api = client(fetcher);
+   expect(await api.blockedBy(issue).catch(safeError)).toEqual({ code: 'SSO_REQUIRED' });
+   expect(await api.blockedBy(issue)).toEqual([]);
+ });
+ it.each(['partial-results; organizations=123', 'not-required', ''])('does not treat other SSO header values as required authorization', header => {
+   return expect(client(vi.fn().mockResolvedValue(response({}, 403, { 'X-GitHub-SSO': header }))).blockedBy(issue)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+ });
+ it('honors rate limiting when an SSO header is also present', async () => {
+   const fetcher = vi.fn().mockResolvedValue(response({}, 403, { 'X-GitHub-SSO': 'required; url=https://github.com/orgs/acme/sso', 'retry-after': '120' }));
+   const api = client(fetcher, () => 1000);
+   await expect(api.blockedBy(issue)).rejects.toMatchObject({ code: 'RATE_LIMIT', retryAt: 121000 });
+   await expect(api.blockedBy(issue)).rejects.toMatchObject({ code: 'RATE_LIMIT' });
+   expect(fetcher).toHaveBeenCalledTimes(1);
  });
  it('paginates without following arbitrary links', async () => {
    const next = 'https://api.github.com/repos/acme/app/issues/2/dependencies/blocked_by?per_page=100&page=2';

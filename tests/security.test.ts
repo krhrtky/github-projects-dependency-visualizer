@@ -5,6 +5,18 @@ import { readFileSync } from 'node:fs';
 const popup = 'chrome-extension://extension-id/src/popup/index.html';
 const content = { id: 'extension-id', url: 'https://github.com/orgs/acme/projects/1', tab: { id: 1 }, frameId: 0 } as chrome.runtime.MessageSender;
 describe('message trust boundary', () => {
+ it.each(['github_pat_' + 'x'.repeat(20), 'github_pat_' + 'x'.repeat(250), 'ghp_' + 'x'.repeat(36)])('accepts supported PAT formats through the trusted message boundary', token => {
+   expect(parseRequest({ type: 'SET_TOKEN', token })).toEqual({ type: 'SET_TOKEN', token });
+   expect(parseRequest({ type: 'SET_TOKEN', token, extra: true })).toBeNull();
+ });
+ it.each([
+   'github_pat_' + 'x'.repeat(19), 'github_pat_' + 'x'.repeat(251),
+   'ghp_' + 'x'.repeat(35), 'ghp_' + 'x'.repeat(37), 'ghp_' + '_'.repeat(36),
+   'gho_' + 'x'.repeat(36), 'ghs_' + 'x'.repeat(36),
+   ' ghp_' + 'x'.repeat(36), 'ghp_' + 'x'.repeat(36) + '\n', null
+ ])('rejects malformed tokens and other credential types', token => {
+   expect(parseRequest({ type: 'SET_TOKEN', token })).toBeNull();
+ });
  it('accepts only exact fixed operations and validated IDs', () => {
    expect(parseRequest({ type: 'FETCH', url: 'https://evil.test' })).toBeNull();
    expect(parseRequest({ type: 'GET_STATE', token: 'extra' })).toBeNull();

@@ -1,5 +1,18 @@
 # 検証結果と制限
 
+## 0.3.1（2026-10-19）
+
+| 検証 | 結果 |
+| --- | --- |
+| TypeScript strict / 本番ビルド | 成功 |
+| 単体・DOM・描画・Security・Lifecycle | 9ファイル、121テスト成功 |
+| Chromium 拡張統合 | 9シナリオ成功 |
+| 配布パッケージ | 0.3.1 の MV3 Manifest と実行ファイル計6件を ZIP 直下に配置、SHA-256 を生成 |
+
+Fine-grained / classic の入力形式、classic のセッション保存と API の Authorization、403 の SSO 認可要求と一般的な権限エラーの区別、Rate Limit の優先と待機期限の維持を確認しました。SSO 認可 URL と応答本文は公開エラーへ含めません。Chromium では、classic PAT の設定から SSO の案内表示、承認後を模擬した Refresh での取得復旧、Logout まで確認しました。更新した Popup の画像も確認しています。
+
+既存のローカル依存から TypeScript、Vite、Vitest、Playwright を直接起動して検証しました。実行環境は macOS arm64 / Node.js 26.12.0 です。GitHub ページと API は合成データで、実 PAT や実際の Enterprise 組織・IdP を使った SSO 認可は検証していません。
+
 ## 0.3.0（2026-10-19）
 
 | 検証 | 結果 |

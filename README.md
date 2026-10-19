@@ -32,7 +32,7 @@ Chrome 114 以降を使用します。
 ## 使い方
 
 1. 対象の GitHub Project の **Board・Table・Roadmap** のいずれかを開きます。
-2. 拡張機能の Popup に Fine-grained PAT を入力し、「PAT を設定」を押します。
+2. 拡張機能の Popup に Fine-grained PAT または PAT (classic) を入力し、「PAT を設定」を押します。
 3. 「依存関係を表示」を ON にします。初期値は OFF です。
 4. 画面右下の解析パネルで最長依存段数・分岐・合流を確認します。「最長経路のみ」、Issue の選択、番号付きの関係一覧で調べたい依存関係を絞り込みます。パネルは見出しから折りたためます。
 5. GitHub 上で依存関係を変更した後や、取得エラーの原因を解決した後は **Refresh** を押します。
@@ -60,18 +60,40 @@ Table・Roadmap の行には数値バッジを重ねません。タイトルや�
 
 ## PAT の準備
 
+Fine-grained PAT (`github_pat_…`) と PAT (classic) (`ghp_…`) に対応します。Repository と権限を限定できる Fine-grained PAT を優先し、組織の利用条件に応じて PAT (classic) を選びます。どちらも有効期限を設定してください。
+
+### Fine-grained PAT
+
 GitHub の Settings → Developer settings → Personal access tokens → Fine-grained tokens から作成します。
 
-- Resource owner に対象 Repository の所有者を選択し、有効期限を設定します。
+- Resource owner に対象 Repository の所有者を選択します。組織の Repository では対象の組織を選びます。
 - Repository access を **Only selected repositories** とし、取得対象の Repository を選びます。
 - Repository permissions の **Issues: Read-only** を選びます。Projects の書き込み権限は不要です。
-- 組織による承認が必要な場合は、承認後に利用します。
+- 組織による管理者承認が必要な場合は、承認後に利用します。承認待ちのトークンは非公開 Repository を取得できません。
+
+Fine-grained PAT は GitHub Enterprise Cloud の SSO に対応し、SSO 認可はトークン作成時に行われます。作成後の **Configure SSO** 操作は不要です。対象の組織が Resource owner に表示されない場合は、組織の PAT ポリシーとメンバー資格を確認してください。[GitHub 公式の PAT 管理手順](https://docs.github.com/en/enterprise-cloud@latest/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) を参照してください。
 
 利用する `blocked_by` 一覧取得 API は、Fine-grained PAT の Issues read 権限に対応します。[GitHub 公式 API 仕様](https://docs.github.com/en/rest/issues/issue-dependencies?apiVersion=2026-03-10#list-dependencies-an-issue-is-blocked-by) を参照してください。拡張は API version `2026-03-10` を使用します。
 
-複数 Repository を含む Project では、それぞれへのアクセス権限が必要です。異なる Resource owner の Repository は、単一の Fine-grained PAT でアクセスできない場合があります。PAT 設定直後の「設定済み」は保存状態を示し、有効性と権限は依存関係の取得時に検証します。
+複数 Repository を含む Project では、それぞれへのアクセス権限が必要です。異なる Resource owner の Repository は、単一の Fine-grained PAT でアクセスできない場合があります。
 
-401 は認証エラー、403 は権限不足または Rate Limit、404 は権限のない非公開 Issue と削除・移動を区別できません。Popup の案内を確認してください。Rate Limit 中は待機時刻を表示し、Refresh で待機期限を迂回したり、自動再試行したりしません。
+### PAT (classic) と Enterprise Cloud の SSO
+
+GitHub の Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token (classic) から作成します。
+
+1. 非公開 Issue を取得する場合は **repo** scope を選択します。
+2. SAML SSO を利用する組織では、作成したトークンの **Configure SSO → 対象組織の Authorize** を実行します。Configure SSO が表示されない場合は、先に対象組織へ IdP 経由で SSO ログインしてください。
+3. 拡張にトークンを設定します。設定済みのトークンを SSO 認可した場合は **Refresh** を押します。
+
+SSO の認可手順は [GitHub 公式ドキュメント](https://docs.github.com/en/enterprise-cloud@latest/authentication/authenticating-with-single-sign-on/authorizing-a-personal-access-token-for-use-with-single-sign-on) を参照してください。組織または Enterprise が PAT (classic) を禁止している場合は利用できません。
+
+**repo scope は書き込みを含む広い権限を持ち、アクセス可能な複数 Repository に及びます。** 拡張が送信するリクエストは依存関係取得の GET のみですが、トークン自体は読み取り専用になりません。[GitHub 公式の scope 定義](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps#available-scopes) を確認してください。
+
+### 取得エラーの確認
+
+PAT 設定直後の「設定済み」は保存状態を示し、有効性と権限は依存関係の取得時に検証します。
+
+401 は認証エラー、403 は SSO 未認可・権限不足・PAT ポリシーによる拒否または Rate Limit、404 は権限のない非公開 Issue と削除・移動を区別できません。SSO 認可が必要な応答では Popup に専用の案内を表示します。Rate Limit 中は待機時刻を表示し、Refresh で待機期限を迂回したり、自動再試行したりしません。
 
 ## 対応範囲と制限
 

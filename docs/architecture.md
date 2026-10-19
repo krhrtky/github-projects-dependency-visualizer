@@ -142,3 +142,27 @@ ZIP の直下に manifest.json を配置し、許可した実行ファイルだ�
 GitHub の[公開 Project](https://github.com/orgs/github/projects/4247) が配信する [JavaScript の source map](https://github.githubassets.com/assets/memex-5f59d439a34fcfd4-f56c635816533e67.js.map) の TableCell / InteractiveItemTitle / RoadmapRow / RoadmapPill / RoadmapHeader の実装で、属性と Issue URL の対応を確認した。[公式 CSS](https://github.githubassets.com/assets/memex.e91539c9150e5d7b.module.css) で固定列・ヘッダーの sticky 配置も確認した。これらは内部実装であり、公開された互換性契約ではない。実装ソース自体は成果物に同梱しない。
 
 合成データの Fixture で、タイトルとバーの一致・不一致、隠れたバー、日付なし、固定列の背後、ヘッダーの背後、他フィールドの参照、仮想化、View 切り替えを検証する。新たな API エンドポイント・認証権限は追加しない。解析対象と最長経路の定義は可視 Issue 間のままとする。
+
+# ADR-007: PAT (classic) と SSO 認可エラーに対応する
+
+状態: 採用 / 日付: 2026-10-19。ADR-001 の認証方式を拡張する。
+
+## 背景
+
+GitHub Enterprise Cloud の SSO 利用環境で、PAT (classic) の入力と認可手順が必要になった。従来は Popup と Background の入力検証が Fine-grained PAT の形式だけを受け付け、PAT (classic) を API 呼び出し前に拒否していた。API からの SSO 認可要求も一般的な権限不足として表示され、復旧手順を判断できなかった。
+
+Fine-grained PAT 自体は SSO に対応し、トークン作成時に SSO 認可される。組織の管理者承認は別途必要になる場合がある。PAT (classic) は作成後の Configure SSO で対象組織への認可を行う。[GitHub の SSO 認可仕様](https://docs.github.com/en/enterprise-cloud@latest/authentication/authenticating-with-single-sign-on/authorizing-a-personal-access-token-for-use-with-single-sign-on) に従い、それぞれの手順を案内する。
+
+## 選択肢と決定
+
+| 論点 | 選択肢 | 決定と理由 |
+| --- | --- | --- |
+| トークン形式 | Fine-grained のみ / PAT (classic) も許可 / GitHub App へ移行 | `github_pat_` と `ghp_` の PAT を許可し、形式検証を Popup と Background で共用する。既存のセッション保存と API 呼び出しを維持して PAT (classic) を利用できるようにする。GitHub App の導入・サーバーは今回の変更範囲に含めない。 |
+| SSO 認可エラー | 一般的な権限不足 / 専用エラー | 403 の `X-GitHub-SSO: required` を `SSO_REQUIRED` として返す。認可先 URL やレスポンス本文を Content Script に渡さず、Popup で Configure SSO と Refresh を案内する。 |
+| 権限案内 | PAT を一律に案内 / 種類別に案内 | Fine-grained は対象組織・Repository・Issues: Read・管理者承認を案内する。非公開 Issue を取得する PAT (classic) は repo scope と SSO 認可を案内し、組織または Enterprise のポリシーで禁止されている場合は利用できないことを明示する。 |
+
+## 帰結
+
+Fine-grained PAT の利用を優先する。PAT (classic) の repo scope は書き込みを含む広い権限を持つため、拡張の読み取り専用動作とトークン自体の権限を区別する。[GitHub の PAT 管理仕様](https://docs.github.com/en/enterprise-cloud@latest/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) と [scope 定義](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps#available-scopes) を根拠とする。
+
+拡張は固定の依存関係取得 API への GET のみを送信し、PAT の保存先・Content Script との認証境界・認証変更時の取得中止を維持する。SSO の認可は GitHub の設定画面で利用者が行い、拡張内に IdP ログインや認可 URL を開く機能は追加しない。

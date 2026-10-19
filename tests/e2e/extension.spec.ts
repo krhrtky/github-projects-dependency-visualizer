@@ -115,6 +115,45 @@ test('supports observed GitHub DnD markup, virtualization and shared Table root 
  await popup.getByRole('button', { name: 'Logout', exact: true }).click(); await expect(overlay).toHaveCount(0); await cdp.detach();
 });
 
+test('accepts a classic PAT and recovers from required SSO authorization on Refresh', async () => {
+ const classicToken = 'ghp_' + 'c'.repeat(36);
+ const ssoMessage = 'SSO 承認が必要です。GitHub の Tokens (classic) → Configure SSO → 対象組織の Authorize を実行し、Refresh してください。';
+ await worker.evaluate(() => {
+   const scope = globalThis as typeof globalThis & { classicFixtureMode: string; classicFixtureAuthorizations: (string | null)[] };
+   scope.classicFixtureMode = 'sso-required'; scope.classicFixtureAuthorizations = [];
+   scope.fetch = async (input, init) => {
+     const url = new URL(String(input));
+     if (url.origin !== 'https://api.github.com' || init?.method !== 'GET') throw new Error('unexpected network operation');
+     scope.classicFixtureAuthorizations.push(new Headers(init.headers).get('Authorization'));
+     if (scope.classicFixtureMode === 'sso-required') return new Response('{}', { status: 403, headers: { 'X-GitHub-SSO': 'required; url=https://github.com/orgs/acme/sso?authorization_request=fixture' } });
+     const dependencies = url.pathname.includes('/api/') ? [{ number: 1, html_url: 'https://github.com/acme/app/issues/1' }] : [];
+     return new Response(JSON.stringify(dependencies), { status: 200 });
+   };
+ });
+ await expect(popup.locator('#enabled')).toBeDisabled();
+ await popup.locator('#token').fill(classicToken); await popup.getByRole('button', { name: 'PAT を設定' }).click();
+ await expect(popup.locator('#auth')).toContainText('PAT 設定済み');
+ expect(await worker.evaluate(() => chrome.storage.session.get('token'))).toEqual({ token: classicToken });
+ await popup.locator('#enabled').check();
+ await expect.poll(async () => { await page.bringToFront(); return popup.locator('#errors').innerText(); }).toBe(ssoMessage);
+ const failedRequests = await worker.evaluate(() => (globalThis as typeof globalThis & { classicFixtureAuthorizations: (string | null)[] }).classicFixtureAuthorizations);
+ expect(failedRequests.length).toBeGreaterThan(0);
+ expect(failedRequests.every(value => value === `Bearer ${classicToken}`)).toBe(true);
+ const cdp = await context.newCDPSession(page);
+ await expect.poll(() => paths(cdp)).toHaveLength(0);
+ await worker.evaluate(() => { (globalThis as typeof globalThis & { classicFixtureMode: string }).classicFixtureMode = 'ok'; });
+ await popup.getByRole('button', { name: 'Refresh', exact: true }).click();
+ await expect.poll(() => paths(cdp)).toHaveLength(1);
+ await expect.poll(async () => { await page.bringToFront(); return popup.locator('#board').innerText(); }).toContain('取得完了');
+ await expect(popup.locator('#errors')).toBeEmpty();
+ const recoveredRequests = await worker.evaluate(() => (globalThis as typeof globalThis & { classicFixtureAuthorizations: (string | null)[] }).classicFixtureAuthorizations);
+ expect(recoveredRequests.length).toBeGreaterThan(failedRequests.length);
+ expect(recoveredRequests.every(value => value === `Bearer ${classicToken}`)).toBe(true);
+ expect(await worker.evaluate(() => chrome.storage.session.get('token'))).toEqual({ token: classicToken });
+ await popup.getByRole('button', { name: 'Logout', exact: true }).click();
+ await expect(page.locator('#github-dependency-visualizer-overlay')).toHaveCount(0); await cdp.detach();
+});
+
 test('uses browser native Fetch through the client without Illegal invocation', async () => {
  await worker.evaluate(() => {
    const scope = globalThis as typeof globalThis & { nativeFixtureFetch: typeof fetch; nativeFixtureCalls: number };

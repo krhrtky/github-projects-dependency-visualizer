@@ -1,5 +1,5 @@
 import './style.css';
-import { send, type Settings, type PageStatus } from '../shared/messages';
+import { isPersonalAccessToken, send, type Settings, type PageStatus } from '../shared/messages';
 import { errorText, type PublicError } from '../shared/errors';
 const input = document.querySelector<HTMLInputElement>('#token')!;
 const enabled = document.querySelector<HTMLInputElement>('#enabled')!;
@@ -47,7 +47,7 @@ async function action(request: Parameters<typeof send>[0]): Promise<void> {
 document.querySelector('#token-form')!.addEventListener('submit', event => {
   event.preventDefault();
   const token = input.value.trim(); input.value = '';
-  if (!/^github_pat_[A-Za-z0-9_]{20,250}$/.test(token)) { actionError = { code: 'AUTH_INVALID' }; void update(); return; }
+  if (!isPersonalAccessToken(token)) { actionError = { code: 'AUTH_INVALID' }; void update(); return; }
   void action({ type: 'SET_TOKEN', token });
 });
 enabled.addEventListener('change', () => { void action({ type: 'SET_ENABLED', enabled: enabled.checked }); });

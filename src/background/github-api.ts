@@ -51,6 +51,7 @@ export class GitHubApi {
             await this.cooldownStore?.write(this.cooldown);
             throw new AppError('RATE_LIMIT', this.cooldown);
           }
+          if (response.status === 403 && /^\s*required\s*(?:;|$)/i.test(response.headers.get('x-github-sso') ?? '')) throw new AppError('SSO_REQUIRED');
           throw new AppError('FORBIDDEN');
         }
         if (response.status === 404) throw new AppError('NOT_FOUND');
