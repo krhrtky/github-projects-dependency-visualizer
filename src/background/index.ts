@@ -34,10 +34,10 @@ async function notifyTab(tabId: number, message: unknown): Promise<void> {
     ]);
   } finally { clearTimeout(timer); }
 }
-async function broadcast(): Promise<void> {
+async function broadcast(relationshipsOnly = false): Promise<void> {
   const settings = await auth.settings();
   const tabs = await chrome.tabs.query({ url: 'https://github.com/*' });
-  await Promise.allSettled(tabs.filter(t => t.id !== undefined && !t.discarded && !('frozen' in t && t.frozen === true)).map(t => notifyTab(t.id!, { type: 'SETTINGS_CHANGED', settings })));
+  await Promise.allSettled(tabs.filter(t => t.id !== undefined && !t.discarded && !('frozen' in t && t.frozen === true)).map(t => notifyTab(t.id!, { type: 'SETTINGS_CHANGED', settings, ...(relationshipsOnly ? { relationshipsOnly: true } : {}) })));
 }
 async function relationshipsChanged(): Promise<void> {
   repository.clear();
@@ -55,6 +55,7 @@ async function handle(request: Request): Promise<unknown> {
     case 'GET_STATE': return auth.settings();
     case 'SET_TOKEN': await auth.setToken(request.token); reset(); await broadcast(); return auth.settings();
     case 'SET_ENABLED': await auth.setEnabled(request.enabled); reset(); await broadcast(); return auth.settings();
+    case 'SET_RELATIONSHIPS_VISIBLE': await auth.setRelationshipsVisible(request.visible); await broadcast(true); return auth.settings();
     case 'LOGOUT': await auth.logout(); await auth.setEnabled(false); reset(); await broadcast(); return auth.settings();
     case 'REFRESH': reset(); await broadcast(); return auth.settings();
     case 'RELATIONSHIPS': {
@@ -112,7 +113,7 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, respond) => {
   if (!request || !authorized(request, sender, chrome.runtime.id, chrome.runtime.getURL('src/popup/index.html'))) {
     respond({ ok: false, error: { code: 'MESSAGE' } }); return false;
   }
-  const isMutation = ['SET_TOKEN', 'SET_ENABLED', 'LOGOUT', 'REFRESH'].includes(request.type);
+  const isMutation = ['SET_TOKEN', 'SET_ENABLED', 'SET_RELATIONSHIPS_VISIBLE', 'LOGOUT', 'REFRESH'].includes(request.type);
   const isWrite = request.type === 'CHANGE_RELATIONSHIP' || request.type === 'PROJECT_SYNC';
   const requestedApi = api;
   const task = isWrite ? relationshipWrites.then(() => mutations).then(() => {

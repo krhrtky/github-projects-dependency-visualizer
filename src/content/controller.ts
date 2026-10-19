@@ -8,7 +8,7 @@ import { detectProjectView, type ProjectView } from './board-detector';
 import { extractCards, projectViewRect } from './card-extractor';
 import { BoardObserver, isExternalMutation } from './board-observer';
 export class Controller {
-  private settings: Settings = { enabled: false, authenticated: false };
+  private settings: Settings = { enabled: false, authenticated: false, relationshipsVisible: true };
   private view: ProjectView | null = null;
   private observer?: BoardObserver;
   private readonly renderer = new SvgRenderer();
@@ -62,16 +62,19 @@ export class Controller {
   };
   private refreshSettings = async (): Promise<void> => {
     const version = ++this.stateVersion;
-    if (!isProjectUrl(location.href)) { this.configure({ enabled: false, authenticated: false }); return; }
+    if (!isProjectUrl(location.href)) { this.configure({ ...this.settings, enabled: false, authenticated: false }); return; }
     const reply = await send<Settings>({ type: 'GET_STATE' });
     if (version !== this.stateVersion) return;
     if (reply.ok) this.configure(reply.data);
-    else { this.configure({ enabled: false, authenticated: false }); this.status = { ...this.status, state: 'error', errors: [reply.error] }; }
+    else { this.configure({ ...this.settings, enabled: false, authenticated: false }); this.status = { ...this.status, state: 'error', errors: [reply.error] }; }
   };
-  configure(settings: Settings): void {
+  configure(settings: Settings, relationshipsOnly = false): void {
+    const preserveDependencies = relationshipsOnly && this.settings.enabled === settings.enabled && this.settings.authenticated === settings.authenticated;
     this.stateVersion++;
-    this.settings = settings; this.generation++; this.pending = false; this.results.clear();
+    this.settings = settings;
     this.relationships.destroy();
+    if (preserveDependencies) { this.schedule(); return; }
+    this.generation++; this.pending = false; this.results.clear();
     if (!settings.enabled || !settings.authenticated) { this.releaseBoard(); this.status = { state: 'off', cards: 0, edges: 0, failed: 0, errors: settings.authenticated ? [] : [{ code: 'AUTH_MISSING' }], truncated: false }; }
     this.schedule();
   }
@@ -92,7 +95,7 @@ export class Controller {
     }
     if (!view) { this.status = { state: 'no-view', cards: 0, edges: 0, failed: 0, errors: [], truncated: false }; return; }
     const candidates = extractCards(view.element, view.kind);
-    const allCards = this.relationships.update(candidates) ? extractCards(view.element, view.kind) : candidates;
+    const allCards = this.settings.relationshipsVisible && this.relationships.update(candidates) ? extractCards(view.element, view.kind) : candidates;
     const unique = [...new Map(allCards.map(c => [issueKey(c.issue), c.issue])).values()];
     const included = new Set(unique.slice(0, MAX_ISSUES).map(issueKey));
     const cards = allCards.filter(c => included.has(issueKey(c.issue)));

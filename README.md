@@ -69,6 +69,12 @@ Table・Roadmap の行には数値バッジを重ねません。タイトルや�
 
 表示を ON にすると、各カード・行に **Relationships** が追加されます。ここから Blocked by（前提）、Blocking（後続）、Parent issue（親）、Sub-issues（子）の実際の関係を取得・追加・削除します。追加先は `owner/repo#123` または GitHub の Issue URL で指定します。別の親がある子 Issue は、既存の親を解除してから追加します。
 
+Table・Roadmap ではタイトルセル右端の **↔** ボタンから開きます。狭い列でも行高や列の位置を維持し、長いタイトルを省略表示します。ボタンにポインターを置くと `Relationships` と表示されます。
+
+列が狭く、標準の展開・子 Issue ボタンが収まらなくなる行は、上部ツールバーの **Issue の Relationships…** で Issue を選んで開きます。列を広げると行内のボタンに戻ります。
+
+Popup の **Relationships の操作UIを表示** で、各カード・行の編集ボタンと View 上部の Relationships ツールバーをまとめて表示・非表示にできます。非表示にすると開いている関係編集・同期画面も閉じます。依存線・解析パネルの表示は維持します。初期設定は表示で、選択はすべての Project に適用し、ブラウザの再起動後も保持します。
+
 ### 標準フィルター
 
 View の上部にある「ブロック中の Issue」「他をブロックする Issue」、および関係編集画面の絞り込みボタンは、GitHub 標準フィルターバーへ条件を追加します。既存の条件を残し、OR を含む条件は括弧で囲んでから追加します。フィルターバーを検出できない場合は、同じ View の `filterQuery` 付き URL を開きます。
@@ -155,7 +161,7 @@ PAT 設定直後の「設定済み」は保存状態を示し、有効性と権�
 
 表示だけでは GitHub のデータを更新しません。Relationships の追加・削除と「同期を実行」は、Issue の関係・拡張所有の Project フィールド・対象 View の表示列を更新します。実行コードはすべて配布フォルダに含み、外部サーバー・CDN・Analytics は利用しません。
 
-PAT は [Chrome の `storage.session`](https://developer.chrome.com/docs/extensions/reference/api/storage#property-session) に保存し、アクセスを `TRUSTED_CONTEXTS` に制限します。Popup の入力欄は送信時に消去します。Content Script に PAT を渡しません。ブラウザの再起動、拡張の再読み込み・更新・無効化などで PAT は失われます。表示 ON/OFF と、Project ごとの拡張所有フィールド ID だけを `storage.local` に保存し、`storage.sync` や Web の localStorage / sessionStorage は利用しません。
+PAT は [Chrome の `storage.session`](https://developer.chrome.com/docs/extensions/reference/api/storage#property-session) に保存し、アクセスを `TRUSTED_CONTEXTS` に制限します。Popup の入力欄は送信時に消去します。Content Script に PAT を渡しません。ブラウザの再起動、拡張の再読み込み・更新・無効化などで PAT は失われます。依存関係と Relationships 操作UIの表示設定、Project ごとの拡張所有フィールド ID を `storage.local` に保存し、`storage.sync` や Web の localStorage / sessionStorage は利用しません。
 
 Background だけが固定された Issue・依存・親子の REST API と `/graphql` へリクエストします。GraphQL のクエリと Mutation は拡張に同梱し、Content Script から任意クエリや URL を指定できません。Project の同期要求は送信元の Project・View と照合します。Cookie は送信せず、リダイレクトは拒否します。送信元・メッセージ・Pagination の URL を検証します。Issue のタイトル・本文は保持・転送せず、レスポンス本体をディスクにキャッシュしません。PAT、タイトル、本文をログに出力しません。
 
@@ -197,6 +203,6 @@ pnpm package:extension
 
 View の検出は `src/content/board-detector.ts`、Issue と接続先の抽出は `src/content/card-extractor.ts` に集約しています。検出できない場合は、現在の View の一意なルート、カード・行・タイトルセル・バーの境界、`/{owner}/{repo}/issues/{number}` 形式のリンクを確認してください。別 View やページ内の他の一覧を誤検出しない Fixture とテストも追加します。Fixture は公開可能なデータを使い、非公開 Issue のタイトル・本文・Repository 名を含めないでください。
 
-Table・Roadmap の検出属性は、[公開 Project](https://github.com/orgs/github/projects/4247) が配信する公式 JavaScript の [source map](https://github.githubassets.com/assets/memex-5f59d439a34fcfd4-f56c635816533e67.js.map) に含まれる実装を根拠にしています。共通の `#project-items-region[role="grid"]`、タイトルの `role="rowheader"`、Roadmap の `.roadmap-row` と `a.roadmap-pill[href]`、同一行の Issue URL の対応を確認しています。これは配信コードの確認であり、実 GitHub 上の Table・Roadmap をブラウザーで描画して DOM を照合した検証とは区別します。検証範囲は [検証結果](docs/verification.md) を参照してください。
+Table・Roadmap の検出属性は、[公開 Project](https://github.com/orgs/github/projects/4247) が配信する公式 JavaScript の [source map](https://github.githubassets.com/assets/memex-5f59d439a34fcfd4-f56c635816533e67.js.map) に含まれる実装を根拠にしています。共通の `#project-items-region[role="grid"]`、タイトルの `role="rowheader"`、Roadmap の `.roadmap-row` と `a.roadmap-pill[href]`、同一行の Issue URL の対応を確認しています。Table は実 GitHub 上でも描画して DOM・計算済み CSS を採取し、[観測用 Fixture](tests/fixtures/github-table-observed.html) に反映しました。拡張の操作はこの再現環境で検証しています。Roadmap のログイン済み実 DOM 照合は含みません。検証範囲は [検証結果](docs/verification.md) を参照してください。
 
 座標は実 DOM から取得し、未描画項目の位置は推測しません。構成は `background/` が認証と API、`content/` が検出と監視、`domain/` がグラフ解析、`renderer/` が線と解析パネル、`popup/` が設定を担当します。

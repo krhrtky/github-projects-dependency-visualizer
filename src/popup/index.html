@@ -5,6 +5,7 @@
 <p id="auth" role="status"></p>
 <form id="token-form"><label for="token">Personal access token (PAT)</label><input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_… / ghp_…" aria-describedby="token-help token-sso" required><p id="token-help" class="hint">表示は Issues: Read、関係の編集は Issues: Write、標準フィールドへの同期は Projects: Write が必要です。classic は非公開 Repository に repo、同期に project scope が必要です。PAT はブラウザのセッション中のみ保持します。</p><p id="token-sso" class="hint">SSO: Fine-grained は作成時に承認。classic は Configure SSO → 対象組織の Authorize を実行してください。</p><button type="submit">PAT を設定</button></form>
 <label class="toggle"><span>依存関係を表示</span><input id="enabled" type="checkbox" role="switch"></label>
+<label class="toggle"><span>Relationships の操作UIを表示</span><input id="relationships-visible" type="checkbox" role="switch"></label>
 <div class="actions"><button id="refresh" type="button">Refresh</button><button id="logout" type="button">Logout</button></div>
 <p id="board" role="status" aria-live="polite"></p><ul id="errors" aria-live="polite"></ul>
 <p id="analysis" class="hint" aria-live="polite"></p>

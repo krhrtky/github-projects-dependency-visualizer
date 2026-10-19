@@ -9,7 +9,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
   const background = !sender.tab && (!sender.url || sender.url === chrome.runtime.getURL('background.js'));
   if (m.type === 'SETTINGS_CHANGED' && background) {
     const settings = m.settings as Partial<Settings> | undefined;
-    if (settings && typeof settings.enabled === 'boolean' && typeof settings.authenticated === 'boolean') controller.configure(settings as Settings);
+    if (settings && typeof settings.enabled === 'boolean' && typeof settings.authenticated === 'boolean' && typeof settings.relationshipsVisible === 'boolean') controller.configure(settings as Settings, m.relationshipsOnly === true);
     respond({ ok: true });
   } else if (m.type === 'RELATIONSHIPS_CHANGED' && background) {
     controller.refreshRelationships(); respond({ ok: true });

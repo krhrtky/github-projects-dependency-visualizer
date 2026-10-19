@@ -1,5 +1,5 @@
-import type { BoardCard } from '../content/card-extractor';
-import { detectProjectView } from '../content/board-detector';
+import { visibleRect, type BoardCard } from '../content/card-extractor';
+import { detectProjectView, TITLE_SELECTOR } from '../content/board-detector';
 import { applyNativeFilter } from '../content/native-project-controls';
 import { issueKey, isIssue, parseIssueUrl, type IssueIdentity } from '../domain/issue';
 import { parseProjectUrl, type ProjectIdentity, type ProjectIntegrationPreview, type ProjectSyncReport } from '../domain/project';
@@ -10,8 +10,10 @@ import { send, type RelationshipChangeReport } from '../shared/messages';
 export const RELATIONSHIPS_ATTRIBUTE = 'data-dependency-relationships';
 const css = `
 :host{font:12px/1.5 system-ui,-apple-system,sans-serif;color:var(--fgColor-default,#1f2328)}
-*{box-sizing:border-box}button,input{font:inherit;color:inherit;border:1px solid var(--borderColor-default,#d1d9e0);border-radius:6px;background:var(--bgColor-default,#fff);padding:6px 9px}button{cursor:pointer}button:hover{background:var(--bgColor-muted,#f6f8fa)}button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid #0969da;outline-offset:2px}a{color:var(--fgColor-accent,#0969da)}
-.item{font-size:11px;margin:3px 0}.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:var(--bgColor-default,#fff);border-bottom:1px solid var(--borderColor-default,#d1d9e0)}.toolbar strong{margin-right:4px}.toolbar small{color:var(--fgColor-muted,#59636e)}
+*{box-sizing:border-box}button,input,select{font:inherit;color:inherit;border:1px solid var(--borderColor-default,#d1d9e0);border-radius:6px;background:var(--bgColor-default,#fff);padding:6px 9px}button{cursor:pointer}button:hover{background:var(--bgColor-muted,#f6f8fa)}button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #0969da;outline-offset:2px}a{color:var(--fgColor-accent,#0969da)}
+:host([data-compact]){position:absolute;inset-inline-end:6px;top:50%;transform:translateY(-50%);display:flex;z-index:1}
+:host([hidden]){display:none}
+.item{font-size:11px;margin:3px 0;white-space:nowrap}.item.compact{display:grid;place-items:center;width:28px;height:28px;padding:0;margin:0;font-size:16px;line-height:1}.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:var(--bgColor-default,#fff);border-bottom:1px solid var(--borderColor-default,#d1d9e0)}.toolbar strong{margin-right:4px}.toolbar small{color:var(--fgColor-muted,#59636e)}
 dialog{position:fixed;inset:0;margin:auto;width:min(680px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow:auto;padding:22px;border:1px solid var(--borderColor-default,#d1d9e0);border-radius:12px;background:var(--bgColor-default,#fff);color:inherit;box-shadow:0 16px 64px #0004;overscroll-behavior:contain}dialog::backdrop{background:#0006}dialog[open]{display:block}.header{display:flex;align-items:start;justify-content:space-between;gap:14px}h2{font-size:19px;margin:0}h3{font-size:14px;margin:0 0 7px}p{margin:8px 0}.note{font-size:11px;color:var(--fgColor-muted,#59636e)}.status{padding:9px;border-radius:6px;background:var(--bgColor-muted,#f6f8fa);overflow-wrap:anywhere}.error{color:var(--fgColor-danger,#cf222e)}section{margin-top:18px;border-top:1px solid var(--borderColor-default,#d1d9e0);padding-top:15px}ul{padding:0;list-style:none;margin:8px 0}li{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:5px 0;overflow-wrap:anywhere}li a{min-width:0;overflow-wrap:anywhere}form{display:flex;gap:6px;align-items:end;flex-wrap:wrap;margin-top:8px}label{flex:1;min-width:200px;font-size:11px}input{display:block;width:100%;margin-top:4px}.filter{font-size:11px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.primary{color:#fff;background:#1f883d;border-color:#1f883d}.primary:hover{background:#1a7f37}.fields{display:block;list-style:disc;padding-left:20px}.fields li{display:list-item}.empty{color:var(--fgColor-muted,#59636e)}
 `;
 
@@ -27,6 +29,50 @@ function ownedHost(kind: string): { host: HTMLDivElement; shadow: ShadowRoot } {
   const shadow = host.attachShadow({ mode: 'closed' }); shadow.append(node('style', css));
   return { host, shadow };
 }
+function applyStyles(element: HTMLElement, styles: Readonly<Record<string, string>>): () => void {
+  const changes = Object.entries(styles).map(([property, value]) => {
+    const previous = { value: element.style.getPropertyValue(property), priority: element.style.getPropertyPriority(property) };
+    element.style.setProperty(property, value);
+    return { property, previous, applied: element.style.getPropertyValue(property) };
+  });
+  return () => {
+    for (const { property, previous, applied } of changes) {
+      if (element.style.getPropertyValue(property) !== applied || element.style.getPropertyPriority(property)) continue;
+      if (previous.value) element.style.setProperty(property, previous.value, previous.priority); else element.style.removeProperty(property);
+    }
+    if (!element.style.length) element.removeAttribute('style');
+  };
+}
+function titleContent(title: HTMLElement): HTMLElement | undefined {
+  return [...title.children].find((child): child is HTMLElement => child instanceof HTMLElement && !child.hasAttribute(RELATIONSHIPS_ATTRIBUTE) && (child.matches('a[href]') || !!child.querySelector('a[href]')));
+}
+function rowLayoutKey(title: HTMLElement, content: HTMLElement | undefined): string {
+  const rect = title.getBoundingClientRect();
+  const clip = visibleRect(title);
+  return JSON.stringify([rect.width, rect.height, Math.max(rect.left, clip.left) - rect.left, Math.min(rect.right, clip.right) - rect.left, content?.textContent, content ? [...content.children].map(child => [child.getAttribute('class'), child.getAttribute('style')]) : []]);
+}
+function compactRowAction(title: HTMLElement, content: HTMLElement | undefined): { restore: () => void; inline: boolean } {
+  const nativeItems = content && !content.matches('a[href]') ? [...content.children].filter((child): child is HTMLElement => child instanceof HTMLElement && !child.matches('a[href]') && !child.querySelector('a[href]')) : [];
+  const visibleWidths = (): number[] => {
+    const bounds = visibleRect(content!);
+    return nativeItems.map(item => {
+      const rect = item.getBoundingClientRect();
+      return Math.max(0, Math.min(rect.right, bounds.right) - Math.max(rect.left, bounds.left));
+    });
+  };
+  const before = content ? visibleWidths() : [];
+  const style = getComputedStyle(title);
+  const restoreTitle = applyStyles(title, {
+    ...(!style.position || style.position === 'static' ? { position: 'relative' } : {}),
+    'padding-inline-end': `${(parseFloat(style.paddingInlineEnd) || 0) + 36}px`,
+  });
+  const restoreContent = content ? applyStyles(content, { 'min-width': '0', overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap' }) : () => {};
+  const restore = (): void => { restoreContent(); restoreTitle(); };
+  if (content && visibleWidths().some((width, index) => width + 0.5 < before[index]!)) {
+    restore(); return { restore: () => {}, inline: false };
+  }
+  return { restore, inline: true };
+}
 export function parseRelationshipIssue(value: string): IssueIdentity | null {
   const input = value.trim();
   const url = parseIssueUrl(input);
@@ -36,8 +82,8 @@ export function parseRelationshipIssue(value: string): IssueIdentity | null {
   const issue = { owner: match[1]!, repo: match[2]!, number: Number(match[3]) };
   return isIssue(issue) ? issue : null;
 }
-interface ItemControl { host: HTMLElement; issue: IssueIdentity; button: HTMLButtonElement }
-interface DialogSession { host: HTMLElement; shadow: ShadowRoot; dialog: HTMLDialogElement; body: HTMLElement; status: HTMLElement; trigger: HTMLElement; busy: boolean; stale: boolean }
+interface ItemControl { host: HTMLElement; issue: IssueIdentity; button: HTMLButtonElement; content?: HTMLElement; layoutKey?: string; restoreLayout: () => void }
+interface DialogSession { host: HTMLElement; shadow: ShadowRoot; dialog: HTMLDialogElement; body: HTMLElement; status: HTMLElement; trigger: HTMLElement; issue?: IssueIdentity; busy: boolean; stale: boolean }
 const kinds: ReadonlyArray<{ kind: RelationshipKind; title: string }> = [
   { kind: 'blockedBy', title: 'Blocked by · 前提' }, { kind: 'blocking', title: 'Blocking · 後続' },
   { kind: 'parent', title: 'Parent issue · 親 Issue' }, { kind: 'child', title: 'Sub-issues · 子 Issue' },
@@ -46,6 +92,7 @@ const kinds: ReadonlyArray<{ kind: RelationshipKind; title: string }> = [
 export class RelationshipControls {
   private readonly items = new Map<HTMLElement, ItemControl>();
   private toolbar?: HTMLElement;
+  private issuePicker?: HTMLSelectElement;
   private session?: DialogSession;
   constructor(private readonly onChanged: () => void) {}
 
@@ -54,35 +101,67 @@ export class RelationshipControls {
     const elements = new Set(cards.map(card => card.element));
     for (const [element, control] of this.items) {
       if (elements.has(element) && control.host.isConnected) continue;
-      control.host.remove(); this.items.delete(element); layoutChanged = true;
+      control.host.remove(); control.restoreLayout(); this.items.delete(element); layoutChanged = true;
     }
     for (const card of cards) {
+      const title = card.element.querySelector<HTMLElement>(TITLE_SELECTOR);
+      const target = title ?? card.element;
+      const content = title ? titleContent(title) : undefined;
+      const layoutKey = title ? rowLayoutKey(title, content) : undefined;
       const existing = this.items.get(card.element);
-      if (existing) {
-        existing.issue = card.issue; existing.button.setAttribute('aria-label', `${issueKey(card.issue)} の Relationships`); continue;
+      if (existing && existing.host.parentElement === target && existing.content === content) {
+        existing.issue = card.issue; existing.button.setAttribute('aria-label', `${issueKey(card.issue)} の Relationships`);
+        if (title && existing.layoutKey !== layoutKey) {
+          existing.restoreLayout();
+          const layout = compactRowAction(title, content);
+          existing.restoreLayout = layout.restore; existing.host.hidden = !layout.inline; existing.layoutKey = layoutKey; layoutChanged = true;
+        }
+        continue;
       }
+      if (existing) { existing.host.remove(); existing.restoreLayout(); }
       const { host, shadow } = ownedHost('item');
-      const control: ItemControl = { host, issue: card.issue, button: button('Relationships', () => this.openRelationships(control.issue, control.button), 'item') };
+      const layout = title ? compactRowAction(title, content) : { restore: () => {}, inline: true };
+      const control: ItemControl = { host, issue: card.issue, content, layoutKey, restoreLayout: layout.restore, button: button(title ? '↔' : 'Relationships', () => this.openRelationships(control.issue, control.button), title ? 'item compact' : 'item') };
+      host.hidden = !layout.inline;
+      if (title) host.setAttribute('data-compact', '');
+      control.button.title = 'Relationships';
       control.button.setAttribute('aria-label', `${issueKey(card.issue)} の Relationships`);
       shadow.append(control.button);
-      (card.element.querySelector('[role="rowheader"]') ?? card.element).append(host);
+      target.append(host);
       this.items.set(card.element, control); layoutChanged = true;
     }
     const view = detectProjectView(document, location.href);
     if (!view || !parseProjectUrl(location.href)) {
       const removedToolbar = !!this.toolbar;
-      this.toolbar?.remove(); this.toolbar = undefined; return layoutChanged || removedToolbar;
+      this.toolbar?.remove(); this.toolbar = undefined; this.issuePicker = undefined; return layoutChanged || removedToolbar;
     }
-    if (this.toolbar?.isConnected && this.toolbar.nextElementSibling === view.element) return layoutChanged;
+    if (this.toolbar?.isConnected && this.toolbar.nextElementSibling === view.element) { this.updateIssuePicker(); return layoutChanged; }
     this.toolbar?.remove();
     const { host, shadow } = ownedHost('toolbar');
     const toolbar = node('div', '', 'toolbar');
+    const picker = node('select'); picker.setAttribute('aria-label', 'Relationships を編集する Issue');
+    picker.addEventListener('change', () => {
+      const selected = [...this.items.values()].find(control => issueKey(control.issue) === picker.value);
+      picker.value = ''; if (selected) this.openRelationships(selected.issue, picker);
+    });
+    this.issuePicker = picker;
     const sync = button('標準フィールドに同期', () => {
       const project = parseProjectUrl(location.href); if (project) void this.openSync(project, sync);
     });
-    toolbar.append(node('strong', 'Relationships'), button('ブロック中の Issue', () => applyNativeFilter('is:blocked')), button('他をブロックする Issue', () => applyNativeFilter('is:blocking')), sync, node('small', '絞り込みには GitHub 標準フィルターを使います。'));
+    toolbar.append(node('strong', 'Relationships'), picker, button('ブロック中の Issue', () => applyNativeFilter('is:blocked')), button('他をブロックする Issue', () => applyNativeFilter('is:blocking')), sync, node('small', '絞り込みには GitHub 標準フィルターを使います。'));
     shadow.append(toolbar); view.element.before(host); this.toolbar = host;
+    this.updateIssuePicker();
     return true;
+  }
+
+  private updateIssuePicker(): void {
+    const picker = this.issuePicker;
+    if (!picker) return;
+    const issues = [...new Map([...this.items.values()].filter(control => control.host.hidden).map(control => [issueKey(control.issue), control.issue])).keys()];
+    picker.hidden = !issues.length;
+    if ([...picker.options].slice(1).map(option => option.value).join(',') === issues.join(',') && picker.options.length) return;
+    const placeholder = node('option', 'Issue の Relationships…'); placeholder.value = '';
+    picker.replaceChildren(placeholder, ...issues.map(key => { const option = node('option', key); option.value = key; return option; }));
   }
 
   private openDialog(title: string, trigger: HTMLElement): DialogSession {
@@ -111,7 +190,11 @@ export class RelationshipControls {
   private closeDialog(): void {
     const session = this.session; this.session = undefined;
     if (!session) return;
-    session.host.remove(); if (session.trigger.isConnected) session.trigger.focus();
+    session.host.remove();
+    const visible = (element: HTMLElement | undefined): element is HTMLElement => !!element?.isConnected && !element.hidden && element.getClientRects().length > 0;
+    const alternatives = session.issue ? [...this.items.values()].filter(control => issueKey(control.issue) === issueKey(session.issue!)).map(control => control.button) : [];
+    const trigger = visible(session.trigger) ? session.trigger : [...alternatives, this.issuePicker].find(visible);
+    trigger?.focus();
   }
   private setBusy(session: DialogSession, busy: boolean): void {
     session.busy = busy; session.dialog.setAttribute('aria-busy', String(busy));
@@ -123,6 +206,7 @@ export class RelationshipControls {
   }
   private openRelationships(issue: IssueIdentity, trigger: HTMLElement): void {
     const session = this.openDialog(`${issueKey(issue)} · Relationships`, trigger);
+    session.issue = issue;
     session.body.append(node('p', '関係の追加・解除は GitHub の Issue に保存します。Issues: Read and write と対象 Issue への権限が必要です。', 'note'));
     void this.loadRelationships(session, issue);
   }
@@ -226,8 +310,8 @@ export class RelationshipControls {
     session.body.append(button('ページを再読み込み', () => location.reload()));
   }
   destroy(): void {
-    this.closeDialog(); this.toolbar?.remove(); this.toolbar = undefined;
-    for (const control of this.items.values()) control.host.remove();
+    this.closeDialog(); this.toolbar?.remove(); this.toolbar = undefined; this.issuePicker = undefined;
+    for (const control of this.items.values()) { control.host.remove(); control.restoreLayout(); }
     this.items.clear();
   }
 }

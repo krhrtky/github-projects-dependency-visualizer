@@ -16,12 +16,16 @@ export class SessionAuth implements AuthProvider {
   async logout(): Promise<void> { await this.ready; await chrome.storage.session.remove('token'); }
   async settings(): Promise<Settings> {
     await this.ready;
-    const [{ enabled }, { token }] = await Promise.all([chrome.storage.local.get('enabled'), chrome.storage.session.get('token')]);
-    return { enabled: enabled === true, authenticated: typeof token === 'string' && token.length > 0 };
+    const [{ enabled, relationshipsVisible }, { token }] = await Promise.all([chrome.storage.local.get(['enabled', 'relationshipsVisible']), chrome.storage.session.get('token')]);
+    return { enabled: enabled === true, authenticated: typeof token === 'string' && token.length > 0, relationshipsVisible: relationshipsVisible !== false };
   }
   async setEnabled(enabled: boolean): Promise<void> {
     if (enabled) await this.getToken();
     await this.ready;
     await chrome.storage.local.set({ enabled });
+  }
+  async setRelationshipsVisible(visible: boolean): Promise<void> {
+    await this.ready;
+    await chrome.storage.local.set({ relationshipsVisible: visible });
   }
 }

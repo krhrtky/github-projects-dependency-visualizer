@@ -6,9 +6,10 @@ import { isProject, parseProjectUrl, projectKey } from '../domain/project';
 import type { ProjectIdentity, ProjectSyncReport } from '../domain/project';
 import { issueKey } from '../domain/issue';
 import type { ChangeRelationship } from '../domain/relationships';
-export interface Settings { enabled: boolean; authenticated: boolean }
+export interface Settings { enabled: boolean; authenticated: boolean; relationshipsVisible: boolean }
 export interface RelationshipChangeReport { changed: true; sync?: ProjectSyncReport | null; syncError?: PublicError }
 export type Request = { type: 'GET_STATE' | 'LOGOUT' | 'REFRESH' } | { type: 'SET_TOKEN'; token: string } | { type: 'SET_ENABLED'; enabled: boolean } | { type: 'DEPENDENCIES'; issues: IssueIdentity[] }
+  | { type: 'SET_RELATIONSHIPS_VISIBLE'; visible: boolean }
   | { type: 'RELATIONSHIPS'; issue: IssueIdentity }
   | { type: 'CHANGE_RELATIONSHIP'; change: ChangeRelationship; project?: ProjectIdentity }
   | { type: 'PROJECT_PREVIEW' | 'PROJECT_SYNC'; project: ProjectIdentity };
@@ -32,6 +33,7 @@ export function parseRequest(value: unknown): Request | null {
   const m = value as Record<string, unknown>;
   if (['GET_STATE', 'LOGOUT', 'REFRESH'].includes(String(m.type)) && exactKeys(m, ['type'])) return m as Request;
   if (m.type === 'SET_ENABLED' && typeof m.enabled === 'boolean' && exactKeys(m, ['type', 'enabled'])) return m as Request;
+  if (m.type === 'SET_RELATIONSHIPS_VISIBLE' && typeof m.visible === 'boolean' && exactKeys(m, ['type', 'visible'])) return m as Request;
   if (m.type === 'SET_TOKEN' && isPersonalAccessToken(m.token) && exactKeys(m, ['type', 'token'])) return m as Request;
   if (m.type === 'DEPENDENCIES' && Array.isArray(m.issues) && m.issues.length <= MAX_ISSUES && m.issues.every(isIssue) && exactKeys(m, ['type', 'issues'])) return m as Request;
   if (m.type === 'RELATIONSHIPS' && isIssue(m.issue) && exactKeys(m, ['type', 'issue'])) return m as Request;

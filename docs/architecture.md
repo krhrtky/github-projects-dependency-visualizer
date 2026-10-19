@@ -222,3 +222,35 @@ API で成功した変更を自動でロールバックしない。Issue の変�
 [公開 Project](https://github.com/orgs/github/projects/4247) の[公式配信 source map](https://github.githubassets.com/assets/memex-1088950f07fae620-9ca0ff903e7899a2.js.map)で、依存 provider の標準フィルター登録、親子のセル編集、既存フィールド、`filterQuery` の読込経路を確認した。依存 qualifier の値は[共有 filter provider の source map](https://github.githubassets.com/assets/jc-46c0fcfd65f80a0d-9f798fd0ce60aaf7.js.map) の `nwoReference` に従う。これらは GitHub 内部実装の確認であり、DOM の互換性契約ではない。
 
 書き込みは公開の[依存 REST API](https://docs.github.com/en/rest/issues/issue-dependencies?apiVersion=2026-03-10)、[親子 REST API](https://docs.github.com/en/rest/issues/sub-issues?apiVersion=2026-03-10)、[Projects GraphQL API](https://docs.github.com/en/graphql/reference/projects)を使う。実アカウントの Issue や Project を変更する検証は自動テストに含めない。
+
+# ADR-010: Table / Roadmap の関係ボタンをタイトルセル内に収める
+
+状態: 採用 / 日付: 2026-10-20。
+
+## 背景と決定
+
+タイトルセルの通常フローへ Relationships ボタンを追加すると、狭い列でタイトルが折り返されて行高が増え、空白のない長いタイトルではボタンが隣列へはみ出した。
+
+ネイティブの子要素すべての幅を調整する案は、展開ボタンやアイコンの配置まで変えるため採用しない。Table / Roadmap では 28px の関係ボタンをタイトルセル内に絶対配置し、セル末尾に 36px の余白を追加する。Issue リンクを含む直下の内容を省略表示し、既存の sticky 配置を維持する。Board はラベル付きのボタンを使う。
+
+実 GitHub と同じ固定高さの flex セルでは、150px の列で余白の追加により標準の子 Issue ボタンがクリップされた。余白追加の前後でタイトル以外の要素の可視幅を比較し、減る行には余白を追加せず、上部ツールバーの Issue 選択から関係を開く。標準操作を隠したり、列幅や行高を拡大したりする案は採用しない。
+
+## 帰結
+
+変更する inline style はプロパティ単位で値と優先度を保存し、無効化・行の削除・タイトル要素の差し替えで復元する。その間に GitHub が別の値へ変更したプロパティは上書きしない。同じ行を再利用した更新では余白を重複して加算しない。ボタンには Issue ごとのアクセシブル名と Relationships のツールチップを付ける。
+
+列幅・行高・タイトル内容・子要素の class / style が変わったときに行内表示の可否を再評価する。ツールバーの選択肢は行内にボタンを置けない可視 Issue に限定し、重複を除く。操作UIを非表示にすると、この選択肢も除去する。
+
+# ADR-011: Relationships 操作UIの表示設定を独立させる
+
+状態: 採用 / 日付: 2026-10-20。
+
+## 背景と決定
+
+依存線と解析パネルを利用しながら、各カード・行の編集ボタンや上部ツールバーを隠せるようにする。既存の依存関係表示スイッチだけで切り替える案は、解析表示も消すため採用しない。
+
+Popup に操作UI専用のスイッチを追加し、`relationshipsVisible` を `storage.local` に保存する。既存の表示を維持するため未設定時は表示する。設定はすべての Project に適用し、ログアウト後も保持する。
+
+## 帰結
+
+非表示への切り替えでは操作UIと開いている編集・同期画面を破棄し、タイトルセルのスタイルを復元する。依存関係の取得結果・解析の選択・進行中の取得や書き込みを維持する。設定の変更は Popup に限定し、既存の設定変更と直列化して各 GitHub タブへ通知する。

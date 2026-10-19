@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "GitHub Projects Dependency Visualizer",
   "description": "GitHub Projects の Board・Table・Roadmap で依存関係と依存の深さ・分岐・合流・最長経路を可視化します。",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "minimum_chrome_version": "114",
   "permissions": [
     "storage"

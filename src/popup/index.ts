@@ -3,6 +3,7 @@ import { isPersonalAccessToken, send, type Settings, type PageStatus } from '../
 import { errorText, type PublicError } from '../shared/errors';
 const input = document.querySelector<HTMLInputElement>('#token')!;
 const enabled = document.querySelector<HTMLInputElement>('#enabled')!;
+const relationshipsVisible = document.querySelector<HTMLInputElement>('#relationships-visible')!;
 const auth = document.querySelector<HTMLElement>('#auth')!;
 const board = document.querySelector<HTMLElement>('#board')!;
 const analysis = document.querySelector<HTMLElement>('#analysis')!;
@@ -22,6 +23,7 @@ async function update(): Promise<void> {
   const settings = reply.data;
   auth.textContent = settings.authenticated ? 'PAT 設定済み（API 検証は取得時）' : 'PAT 未設定';
   enabled.checked = settings.enabled && settings.authenticated; enabled.disabled = !settings.authenticated || busy;
+  relationshipsVisible.checked = settings.relationshipsVisible; relationshipsVisible.disabled = busy;
   const problems: PublicError[] = actionError ? [actionError] : [];
   if (!settings.authenticated) problems.push({ code: 'AUTH_MISSING' });
   try {
@@ -41,6 +43,7 @@ async function update(): Promise<void> {
 }
 async function action(request: Parameters<typeof send>[0]): Promise<void> {
   busy = true; document.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.disabled = true; });
+  enabled.disabled = true; relationshipsVisible.disabled = true;
   try { const reply = await send<Settings>(request); actionError = reply.ok ? undefined : reply.error; }
   finally { busy = false; document.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.disabled = false; }); await update(); }
 }
@@ -51,6 +54,7 @@ document.querySelector('#token-form')!.addEventListener('submit', event => {
   void action({ type: 'SET_TOKEN', token });
 });
 enabled.addEventListener('change', () => { void action({ type: 'SET_ENABLED', enabled: enabled.checked }); });
+relationshipsVisible.addEventListener('change', () => { void action({ type: 'SET_RELATIONSHIPS_VISIBLE', visible: relationshipsVisible.checked }); });
 document.querySelector('#refresh')!.addEventListener('click', () => { void action({ type: 'REFRESH' }); });
 document.querySelector('#logout')!.addEventListener('click', () => { input.value = ''; void action({ type: 'LOGOUT' }); });
 void update();
