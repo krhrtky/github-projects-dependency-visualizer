@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ja" data-color-mode="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dependency analysis sample board</title>
+  <style>
+    :root{color-scheme:light;--bgColor-default:#fff;--bgColor-muted:#f6f8fa;--fgColor-default:#1f2328;--fgColor-muted:#59636e;--borderColor-default:#d1d9e0;--bgColor-attention-muted:#fff8c5;--bgColor-accent-muted:#ddf4ff;--fgColor-attention:#9a6700}
+    :root[data-color-mode="dark"]{color-scheme:dark;--bgColor-default:#0d1117;--bgColor-muted:#161b22;--fgColor-default:#f0f6fc;--fgColor-muted:#9198a1;--borderColor-default:#3d444d;--bgColor-attention-muted:#bb800926;--bgColor-accent-muted:#388bfd26;--fgColor-attention:#d29922}
+    *{box-sizing:border-box}body{margin:0;color:var(--fgColor-default);background:var(--bgColor-default);font:14px system-ui,-apple-system,sans-serif}nav{height:65px;display:flex;align-items:center;gap:16px;padding:0 36px;border-bottom:1px solid var(--borderColor-default)}nav strong{font-size:16px}.sample{margin-left:auto;color:var(--fgColor-muted);font-size:12px}header{padding:24px 36px 18px}h1{font-size:23px;margin:0 0 7px}header p{margin:0;color:var(--fgColor-muted);font-size:13px}.view{margin-top:18px;display:flex;gap:24px;font-weight:600}.view span:first-child{border-bottom:2px solid #fd8c73;padding-bottom:9px}
+    #board{display:flex;align-items:flex-start;gap:100px;overflow:auto;margin:0 26px;height:710px;padding:18px 95px 24px;border:1px solid var(--borderColor-default);border-radius:10px;background:var(--bgColor-muted)}section{width:300px;min-width:300px}h2{margin:0 0 22px;font-size:13px;font-weight:600}h2 span{margin-left:8px;color:var(--fgColor-muted);font-size:11px}article{display:block;position:relative;height:110px;margin-bottom:30px;padding:17px 15px;background:var(--bgColor-default);border:1px solid var(--borderColor-default);border-radius:8px;box-shadow:0 2px 4px #0001}article small{display:block;color:var(--fgColor-muted);font-size:11px;margin-bottom:11px}article a{color:var(--fgColor-default);font-size:13px;font-weight:600;text-decoration:none}.tag{display:inline-block;margin-top:13px;border:1px solid #8250df66;color:#8250df;border-radius:10px;padding:1px 7px;font-size:10px}.tag.green{color:#1a7f37;border-color:#1a7f3766}.aside{margin-top:140px}footer{padding:13px 36px;color:var(--fgColor-muted);font-size:11px}
+  </style>
+</head>
+<body>
+  <nav><strong>acme</strong><span>/</span><span>Projects</span><span class="sample">公開サンプル · 実在するプロジェクトのデータは含みません</span></nav>
+  <header><h1>リリースに向けた依存関係</h1><p>同じ列に並ぶカードの関係と、最長の依存経路を確認します。</p><div class="view"><span>Board</span><span>Backlog</span></div></header>
+  <main id="board" data-testid="board-view">
+    <section aria-label="In progress"><h2>In progress <span>4</span></h2>
+      <article data-testid="board-card"><small>acme / app · #1</small><a href="/acme/app/issues/1">A · API の仕様を確定する</a><br><span class="tag">planning</span></article>
+      <article data-testid="board-card"><small>acme / app · #2</small><a href="/acme/app/issues/2">B · API を実装する</a><br><span class="tag">backend</span></article>
+      <article data-testid="board-card"><small>acme / app · #3</small><a href="/acme/app/issues/3">C · 画面と API を結合する</a><br><span class="tag">integration</span></article>
+      <article data-testid="board-card"><small>acme / app · #4</small><a href="/acme/app/issues/4">D · リリースを検証する</a><br><span class="tag green">release</span></article>
+    </section>
+    <section aria-label="Ready"><h2>Ready <span>1</span></h2>
+      <article class="aside" data-testid="board-card"><small>acme / app · #5</small><a href="/acme/app/issues/5">E · 利用ガイドを作成する</a><br><span class="tag green">documentation</span></article>
+    </section>
+  </main>
+  <footer>矢印は blocker → blocked。線の番号は右下の関係一覧に対応します。</footer>
+</body>
+</html>

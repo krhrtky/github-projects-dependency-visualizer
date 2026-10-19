@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Issue Dependencies</title></head>
+<body><main>
+<header><span class="eyebrow">GITHUB PROJECTS</span><h1>Issue Dependencies</h1><p>ブロックする Issue → ブロックされる Issue</p></header>
+<p id="auth" role="status"></p>
+<form id="token-form"><label for="token">Fine-grained PAT</label><input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…" required><p class="hint">選択した Repository の Issues: Read 権限が必要です。PAT はブラウザのセッション中のみ保持します。</p><button type="submit">PAT を設定</button></form>
+<label class="toggle"><span>依存関係を表示</span><input id="enabled" type="checkbox" role="switch"></label>
+<div class="actions"><button id="refresh" type="button">Refresh</button><button id="logout" type="button">Logout</button></div>
+<p id="board" role="status" aria-live="polite"></p><ul id="errors" aria-live="polite"></ul>
+<p id="analysis" class="hint" aria-live="polite"></p>
+<p class="hint">表示中のカード間だけを接続します。依存関係を変更した後は Refresh してください。</p>
+</main><script type="module" src="./index.ts"></script></body></html>

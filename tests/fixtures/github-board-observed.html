@@ -1,0 +1,14 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Observed Board structure fixture</title><style>
+body{margin:0;font-family:system-ui;background:#f6f8fa;color:#1f2328}nav{padding:16px}#project-items-region[data-dnd-drop-id="board"]{display:flex;gap:24px;padding:24px;overflow:auto;height:430px;width:800px;border:1px solid #aaa;align-items:start}[data-board-column]{flex:0 0 280px}.column-drop-zone{overflow-y:auto;max-height:330px}[data-board-card-id]{margin:8px;padding:16px;border:1px solid #aaa;border-radius:8px;background:white;min-height:100px;box-sizing:border-box}h3{font-size:14px;margin:10px 0}a{color:#0969da}
+</style></head><body><nav>Observed GitHub Board structure / synthetic issue data</nav>
+<div role="tabpanel"><div class="board-container"><div id="project-items-region" data-dnd-drop-id="board" data-dnd-drop-type="column" data-memex-small-viewport-a11y="true">
+<div data-board-column="Todo" data-dnd-drag-type="column"><h2>Todo</h2><div class="column-drop-zone" data-dnd-drop-type="card">
+<div data-board-card-id="101" data-hovercard-subject-tag="issue:1001" role="button" tabindex="0" aria-disabled="false" aria-roledescription="draggable" aria-labelledby="board-card-title-101 board-card-header-title-101"><div id="board-card-header-title-101">app #1</div><a data-component="Link" role="button" href="https://github.com/acme/app/issues/1" target="_blank" rel="noreferrer"><h3 id="board-card-title-101">Synthetic blocker</h3></a><ul aria-label="Fields"></ul></div>
+<div data-board-card-id="102" role="button" aria-disabled="false" aria-roledescription="draggable"><h3>Synthetic draft</h3></div>
+<div data-board-card-id="103" data-hovercard-subject-tag="pull_request:1003" role="button" aria-disabled="false" aria-roledescription="draggable"><a role="button" href="https://github.com/acme/app/pull/9">Synthetic PR</a></div>
+<div data-board-card-id="104" role="button" aria-disabled="true" aria-roledescription="draggable" aria-label="Synthetic virtualized placeholder acme/app#4"></div>
+</div></div>
+<div data-board-column="Doing" data-dnd-drag-type="column"><h2>Doing</h2><div class="column-drop-zone" data-dnd-drop-type="card"><div data-board-card-id="105" data-hovercard-subject-tag="issue:1005" role="button" tabindex="0" aria-disabled="false" aria-roledescription="draggable"><div>api #1</div><a data-component="Link" role="button" href="https://github.com/acme/api/issues/1" target="_blank" rel="noreferrer"><h3>Synthetic blocked issue</h3></a><ul aria-label="Fields"></ul></div></div></div>
+<div data-board-column="Done" data-dnd-drag-type="column"><h2>Done</h2><div class="column-drop-zone" data-dnd-drop-type="card"><div data-board-card-id="106" data-hovercard-subject-tag="issue:1006" role="button" aria-disabled="false" aria-roledescription="draggable"><a role="button" href="https://github.com/acme/app/issues/3"><h3>Synthetic issue</h3></a></div></div></div>
+</div></div></div></body></html>

@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "GitHub Projects Dependency Visualizer",
+  "description": "GitHub Projects の依存線を分離し、深さ・分岐・合流・最長経路を可視化します。",
+  "version": "0.2.0",
+  "minimum_chrome_version": "114",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://github.com/*",
+    "https://api.github.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://github.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "Issue Dependencies"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://api.github.com; base-uri 'none'"
+  }
+}

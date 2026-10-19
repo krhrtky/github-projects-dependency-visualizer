@@ -1,0 +1,11 @@
+node_modules/
+dist/
+release/
+playwright-report/
+test-results/
+coverage/
+*.log
+.env*
+.DS_Store
+.archify/
+.pnpm-store/
