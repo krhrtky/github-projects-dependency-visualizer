@@ -166,3 +166,59 @@ Fine-grained PAT 自体は SSO に対応し、トークン作成時に SSO 認�
 Fine-grained PAT の利用を優先する。PAT (classic) の repo scope は書き込みを含む広い権限を持つため、拡張の読み取り専用動作とトークン自体の権限を区別する。[GitHub の PAT 管理仕様](https://docs.github.com/en/enterprise-cloud@latest/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) と [scope 定義](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps#available-scopes) を根拠とする。
 
 拡張は固定の依存関係取得 API への GET のみを送信し、PAT の保存先・Content Script との認証境界・認証変更時の取得中止を維持する。SSO の認可は GitHub の設定画面で利用者が行い、拡張内に IdP ログインや認可 URL を開く機能は追加しない。
+
+# ADR-008: 依存線を Issue のペアと自然文で示す
+
+状態: 採用 / 日付: 2026-10-19。ADR-004 の番号による依存線の識別を置き換える。
+
+## 背景
+
+匿名の番号を「関係 01」と表示しても、何の関係か、矢印のどちらが依存する側かを判別できなかった。線の番号を一覧と照合し、そこから Issue を探す操作も必要だった。
+
+## 選択肢と決定
+
+番号を残して説明文を増やす案は、一覧との照合をなくせず、具体的な依存の情報を見つけにくくするため採用しない。線には実際の Issue のペアを `#1 → #2` と表示し、初期表示で開く「依存の一覧」には `#2 は #1 に依存` と完全な Issue 識別子を併記する。可視範囲の Repository が単一なら `#番号`、複数なら `repo#番号`、異なる所有者の同名 Repository がある場合は `owner/repo#番号` を用い、線と一覧の表記を揃える。
+
+一覧の選択で一本の線と両端カードのバッジを強調し、「強調を解除」で全体へ戻せるようにする。矢印の意味と依存の一覧を先に示し、深さ・分岐・合流の数値と説明は「深さ・分岐・合流の詳細」にまとめて折りたたむ。
+
+矢印ラベルは Issue のペアを上段、両端の依存の深さを下段の `深さ 0 → 2` として表示する。単一の辺の順位を別途定義せず、カードと同じ 0 起点の最長経路による深さを前提・後続の順に示す。一覧と選択中の表示にも同じ値を含め、循環がある場合は `深さ 未算出` とする。
+
+## 帰結
+
+線とバッジは引き続き `pointer-events:none` とし、操作を解析パネル内に限定して既存カードのクリック・ドラッグを維持する。閉じた Shadow DOM、可視 Issue のみの解析、取得する API と認証権限は変更しない。Issue の完了状態から待機数や開始可否を推測せず、取得した依存の向きを示す。
+
+# ADR-009: 依存・親子を Projects の標準フィルターとフィールドへ統合する
+
+状態: 採用 / 日付: 2026-10-19。ADR-001 の読み取り専用 API、ADR-008 の解析パネル内だけの操作という制約を拡張する。
+
+## 背景
+
+依存・親子関係を Projects 内で編集し、他の項目と同じフィルター・表示設定で扱う必要がある。親子には既存の Parent issue / Sub-issue progress とセル編集がある。依存には標準の `is:blocked` / `is:blocking` / `blocked-by:` / `blocking:` フィルターがあるが、標準の依存フィールドはない。
+
+## 選択肢と決定
+
+| 論点 | 選択肢 | 決定と理由 |
+| --- | --- | --- |
+| 絞り込み | 可視 DOM を非表示にする / GitHub の標準クエリ | 標準フィルターバーに条件を追加する。非表示や仮想化された Issue も GitHub が判定し、通常の View 保存を利用できる。既存 OR 条件の意味を保つ。 |
+| 親子の表示 | 独自の親子カスタムフィールド / 標準フィールド | 標準の Parent issue / Sub-issue progress を再利用する。値は Issue 関係 API または GitHub の標準セルで編集する。 |
+| 依存の表示 | DOM だけの擬似列 / Project の実カスタムフィールド | Text の Dependency blockers / Dependency blocking と Single select の Dependency status に同期する。通常の列選択・並べ替え・選択値のグループ化を利用する。ミラーセルの編集を関係の変更と解釈しない。 |
+| 編集 | ミラーセルから暗黙の逆同期 / 専用の明示操作 | カード・行の Relationships から固定 REST API で追加・削除する。文字列編集による関係の意図しない消去を避ける。親を自動置換しない。 |
+| 同期範囲 | 可視 Issue / Project 全体 | 非アーカイブの Issue をページネーションで取得する。全件の列挙が終わるまで書き込まず、1,000 Issue 超過時は開始しない。関係の取得失敗を None に変換しない。 |
+| 同名フィールド | 名前だけで再利用 / 作成 ID の所有権を記録 | 拡張が作成した ID だけを `storage.local` に記録する。型不一致・他者の同名フィールドを競合として拒否する。途中の作成成功後にも ID を保存し、再実行で重複作成しない。 |
+| 更新の契機 | 定期的な全件同期 / 明示同期と編集後の差分更新 | 全件同期は利用者の操作時だけ行う。拡張での編集後は所有済みフィールドの両端を更新する。外部での変更は再同期する。 |
+
+## 境界と帰結
+
+表示を ON にしても自動で GitHub へ書き込まない。同期は読取専用のプレビュー後に実行し、対象 Project・Issue 件数・作成列・表示列を示す。Board・Table の明示的な View 番号がある場合だけ、既存の表示列を維持して列を追加する。Roadmap と View 未指定の URL では表示設定を自動変更しない。filter・sort・group は変更しない。
+
+関係の編集には Issues: Write、標準フィールドの同期には Projects: Write が追加で必要になる。PAT と任意クエリは Content Script に公開しない。Background のメッセージ検証で Project・View を送信元と照合し、固定クエリ・固定 REST 操作だけを提供する。関係・同期の書き込みは順序を制御し、認証変更前に待機していた書き込みを新しい認証で実行しない。長い同期の間も Logout による中断を妨げない。
+
+API で成功した変更を自動でロールバックしない。Issue の変更が成功してミラーの更新が失敗した場合は、変更成功と同期失敗を区別する。GraphQL の部分エラーは成功扱いせず、変更結果が未確認の項目を表示する。再試行は自動で行わない。
+
+拡張 UI は閉じた Shadow DOM に置き、所有属性を MutationObserver の除外に追加する。破棄・SPA 遷移・View 切り替えで UI を除去する。Board の Issue 識別から標準 Fields 領域と拡張所有 UI を除き、関係先リンクをタイトルと混同しない。
+
+## 根拠
+
+[公開 Project](https://github.com/orgs/github/projects/4247) の[公式配信 source map](https://github.githubassets.com/assets/memex-1088950f07fae620-9ca0ff903e7899a2.js.map)で、依存 provider の標準フィルター登録、親子のセル編集、既存フィールド、`filterQuery` の読込経路を確認した。依存 qualifier の値は[共有 filter provider の source map](https://github.githubassets.com/assets/jc-46c0fcfd65f80a0d-9f798fd0ce60aaf7.js.map) の `nwoReference` に従う。これらは GitHub 内部実装の確認であり、DOM の互換性契約ではない。
+
+書き込みは公開の[依存 REST API](https://docs.github.com/en/rest/issues/issue-dependencies?apiVersion=2026-03-10)、[親子 REST API](https://docs.github.com/en/rest/issues/sub-issues?apiVersion=2026-03-10)、[Projects GraphQL API](https://docs.github.com/en/graphql/reference/projects)を使う。実アカウントの Issue や Project を変更する検証は自動テストに含めない。

@@ -32,6 +32,25 @@ describe('message trust boundary', () => {
    expect(authorized({ type: 'GET_STATE' }, { ...content, url: 'https://evil.test' }, 'extension-id', popup)).toBe(false);
    expect(authorized({ type: 'LOGOUT' }, { id: 'extension-id', url: popup }, 'extension-id', popup)).toBe(true);
  });
+ it('limits native Project writes to the sending Project and current view', () => {
+   const project = { kind: 'orgs', owner: 'acme', number: 1 } as const;
+   const sync = { type: 'PROJECT_SYNC', project } as const;
+   expect(parseRequest(sync)).toEqual(sync);
+   expect(authorized(sync, content, 'extension-id', popup)).toBe(true);
+   expect(authorized({ ...sync, project: { ...project, number: 2 } }, content, 'extension-id', popup)).toBe(false);
+   expect(authorized({ ...sync, project: { ...project, view: 1 } }, content, 'extension-id', popup)).toBe(false);
+   expect(parseRequest({ type: 'PROJECT_SYNC', project: { ...project, url: 'https://evil.test' } })).toBeNull();
+ });
+ it('accepts only explicit relationship operations and distinct issue identities', () => {
+   const issue = { owner: 'acme', repo: 'app', number: 1 };
+   const change = { issue, related: { ...issue, number: 2 }, kind: 'blockedBy', action: 'add' };
+   const request = { type: 'CHANGE_RELATIONSHIP', change };
+   expect(parseRequest(request)).toEqual(request);
+   expect(authorized(request as Parameters<typeof authorized>[0], content, 'extension-id', popup)).toBe(true);
+   expect(parseRequest({ ...request, change: { ...change, related: issue } })).toBeNull();
+   expect(parseRequest({ ...request, change: { ...change, kind: 'arbitrary' } })).toBeNull();
+   expect(parseRequest({ ...request, change: { ...change, url: 'https://evil.test' } })).toBeNull();
+ });
 });
 describe('session-only auth', () => {
  let session: Record<string, unknown>;

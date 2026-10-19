@@ -4,7 +4,16 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 interface DomNode { backendNodeId: number; attributes?: string[]; children?: DomNode[]; shadowRoots?: DomNode[] }
-interface OverlayState { metrics: string[]; view: string; edges: { key: string; path: string; opacity: string }[]; note: string }
+interface OverlayState {
+  metrics: string[];
+  view: string;
+  edges: { key: string; path: string; opacity: string }[];
+  edgeLabels: string[];
+  edgeDepths: string[];
+  labelsOverlap: boolean;
+  labelsOverlapItems: boolean;
+  note: string;
+}
 interface Status { state: string; view?: string; cards: number; edges: number; analysis?: { maxDepth: number | null } }
 let context: BrowserContext;
 let worker: Worker;
@@ -40,10 +49,18 @@ async function shadowCall<T>(functionDeclaration: string, values: unknown[] = []
 }
 async function overlayState(): Promise<OverlayState> {
   return shadowCall<OverlayState>(function (this: ShadowRoot) {
+    const labels = [...this.querySelectorAll('g[data-dependency-label]')].map(element => element.getBoundingClientRect());
+    const items = [...this.ownerDocument.querySelectorAll<HTMLElement>(':is([data-item-id="1"],[data-item-id="2"],[data-item-id="3"],[data-item-id="4"]) :is([role="rowheader"],.roadmap-pill)')]
+      .map(element => element.getBoundingClientRect()).filter(rect => rect.width > 0 && rect.height > 0);
+    const overlaps = (first: DOMRect, second: DOMRect): boolean => first.left < second.right && first.right > second.left && first.top < second.bottom && first.bottom > second.top;
     return {
       metrics: [...this.querySelectorAll('.metric strong')].map(element => element.textContent ?? ''),
       view: this.querySelector('.eyebrow')?.textContent ?? '',
       edges: [...this.querySelectorAll('g[data-edge-key]')].map(group => ({ key: group.getAttribute('data-edge-key')!, path: group.querySelector('path')!.getAttribute('d')!, opacity: group.getAttribute('opacity')! })),
+      edgeLabels: [...this.querySelectorAll('text[data-dependency-pair]')].map(element => element.textContent ?? ''),
+      edgeDepths: [...this.querySelectorAll('text[data-dependency-depth]')].map(element => element.textContent ?? ''),
+      labelsOverlap: labels.some((label, index) => labels.slice(index + 1).some(other => overlaps(label, other))),
+      labelsOverlapItems: labels.some(label => items.some(item => overlaps(label, item))),
       note: [...this.querySelectorAll('.note')].map(element => element.textContent ?? '').join(' '),
     };
   }.toString());
@@ -116,6 +133,10 @@ test('shows Table dependencies using titles, survives scrolling and tracks virtu
   const initial = await overlayState();
   expect(initial.metrics).toEqual(['3', '1', '1']);
   expect(initial.view).toContain('Table');
+  expect(initial.edgeLabels).toEqual(['#1 → #2', '#1 → #3', '#2 → #3', '#3 → #4']);
+  expect(initial.edgeDepths).toEqual(['深さ 0 → 1', '深さ 0 → 2', '深さ 1 → 2', '深さ 2 → 3']);
+  expect(initial.labelsOverlap).toBe(false);
+  expect(initial.labelsOverlapItems).toBe(false);
   expect(await worker.evaluate(() => (globalThis as typeof globalThis & { projectViewRequests: number[] }).projectViewRequests.slice().sort())).toEqual([1, 2, 3, 4]);
   await clickFilter(1);
   expect((await overlayState()).edges.map(edge => edge.key)).toEqual([edgeKey(1, 2), edgeKey(2, 3), edgeKey(3, 4)]);
@@ -152,6 +173,10 @@ test('switches the same root to Roadmap and connects visible bars with title fal
   const initial = await overlayState();
   expect(initial.view).toContain('Roadmap');
   expect(initial.metrics).toEqual(['3', '1', '1']);
+  expect(initial.edgeLabels).toEqual(['#1 → #2', '#1 → #3', '#2 → #3', '#3 → #4']);
+  expect(initial.edgeDepths).toEqual(['深さ 0 → 1', '深さ 0 → 2', '深さ 1 → 2', '深さ 2 → 3']);
+  expect(initial.labelsOverlap).toBe(false);
+  expect(initial.labelsOverlapItems).toBe(false);
   const bar = await page.locator('[data-item-id="1"] a.roadmap-pill').boundingBox();
   const fromBar = initial.edges.find(edge => edge.key === edgeKey(1, 2))!.path.match(/^M ([-\d.]+) ([-\d.]+)/)!;
   expect(Math.min(Math.abs(Number(fromBar[1]) - bar!.x), Math.abs(Number(fromBar[1]) - bar!.x - bar!.width))).toBeLessThan(1);

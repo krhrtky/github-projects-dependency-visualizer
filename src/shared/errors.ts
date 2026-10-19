@@ -1,4 +1,4 @@
-export type ErrorCode = 'AUTH_MISSING' | 'AUTH_INVALID' | 'SSO_REQUIRED' | 'FORBIDDEN' | 'NOT_FOUND' | 'RATE_LIMIT' | 'TIMEOUT' | 'NETWORK' | 'SCHEMA' | 'API' | 'MESSAGE' | 'STALE';
+export type ErrorCode = 'AUTH_MISSING' | 'AUTH_INVALID' | 'SSO_REQUIRED' | 'FORBIDDEN' | 'WRITE_FORBIDDEN' | 'CONFLICT' | 'VALIDATION' | 'LIMIT' | 'NOT_FOUND' | 'RATE_LIMIT' | 'TIMEOUT' | 'NETWORK' | 'SCHEMA' | 'API' | 'MESSAGE' | 'STALE';
 export interface PublicError { code: ErrorCode; retryAt?: number }
 export class AppError extends Error {
   constructor(public readonly code: ErrorCode, public readonly retryAt?: number) { super(code); }
@@ -11,6 +11,10 @@ export const errorText: Record<ErrorCode, string> = {
   AUTH_INVALID: 'PAT が無効または期限切れです。新しい PAT を設定してください。',
   SSO_REQUIRED: 'SSO 承認が必要です。GitHub の Tokens (classic) → Configure SSO → 対象組織の Authorize を実行し、Refresh してください。',
   FORBIDDEN: 'アクセスできません。Fine-grained の Issues: Read と対象 Repository・組織の承認、または classic の repo scope・SSO 承認と組織の PAT ポリシーを確認してください。',
+  WRITE_FORBIDDEN: '変更できません。関係の編集は Issues: Write、標準フィールドの同期は Projects: Write と Project の編集権限が必要です。classic は repo / project scope と SSO 承認を確認してください。',
+  CONFLICT: '既存の親や同名フィールドと競合しています。既存の親を解除するか、競合するフィールドを確認してからやり直してください。',
+  VALIDATION: 'GitHub が変更を受け付けませんでした。自己参照・循環・重複・件数上限と、指定した Issue を確認してください。',
+  LIMIT: '同期対象が上限の 1,000 Issue を超えています。フィールドの作成・更新は開始していません。',
   NOT_FOUND: 'Issue を取得できません。削除・移動、PAT の対象 Repository・権限・組織の承認・SSO 承認を確認してください。',
   RATE_LIMIT: 'API の利用制限です。表示された時刻以降に Refresh してください。',
   TIMEOUT: 'API がタイムアウトしました。接続を確認して Refresh してください。',

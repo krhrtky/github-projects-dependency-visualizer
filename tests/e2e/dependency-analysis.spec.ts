@@ -12,7 +12,17 @@ interface ShadowState {
   selected: string;
   criticalDisabled: boolean;
   edges: EdgeState[];
+  edgeLabels: string[];
+  edgeDepths: string[];
+  labelsOverlap: boolean;
+  labelsOverlapCards: boolean;
   relations: string[];
+  relationIdentities: string[];
+  relationDepths: string[];
+  relationAriaLabels: (string | null)[];
+  relationsOpen: boolean;
+  analysisDetailsOpen: boolean;
+  guide: string;
   background: string;
 }
 let context: BrowserContext;
@@ -56,17 +66,30 @@ async function shadowCall<T>(functionDeclaration: string, values: unknown[] = []
 async function state(): Promise<ShadowState> {
   return shadowCall<ShadowState>(function (this: ShadowRoot) {
     const critical = this.querySelector<HTMLButtonElement>('.filters button:nth-child(2)')!;
+    const labels = [...this.querySelectorAll('g[data-dependency-label]')].map(element => element.getBoundingClientRect());
+    const cards = [...this.ownerDocument.querySelectorAll('article[data-testid="board-card"]')].map(element => element.getBoundingClientRect());
+    const overlaps = (first: DOMRect, second: DOMRect): boolean => first.left < second.right && first.right > second.left && first.top < second.bottom && first.bottom > second.top;
     return {
       metrics: [...this.querySelectorAll('.metric strong')].map(element => element.textContent ?? ''),
       counts: this.querySelector('.body > .note')?.textContent ?? '',
       note: this.querySelector('.note.warning')?.textContent ?? '',
-      selected: this.querySelector('label + .note')?.textContent ?? '',
+      selected: this.querySelector('.selected')?.textContent ?? '',
       criticalDisabled: critical.disabled,
       edges: [...this.querySelectorAll<SVGGElement>('g[data-edge-key]')].map(group => {
         const path = group.querySelector('path')!;
         return { key: group.getAttribute('data-edge-key')!, path: path.getAttribute('d')!, opacity: group.getAttribute('opacity')!, width: path.getAttribute('stroke-width')!, critical: group.getAttribute('data-critical') === 'true', cyclic: group.getAttribute('data-cycle') === 'true', dash: path.getAttribute('stroke-dasharray') };
       }),
-      relations: [...this.querySelectorAll('.relations button')].map(element => element.textContent ?? ''),
+      edgeLabels: [...this.querySelectorAll('text[data-dependency-pair]')].map(element => element.textContent ?? ''),
+      edgeDepths: [...this.querySelectorAll('text[data-dependency-depth]')].map(element => element.textContent ?? ''),
+      labelsOverlap: labels.some((label, index) => labels.slice(index + 1).some(other => overlaps(label, other))),
+      labelsOverlapCards: labels.some(label => cards.some(card => overlaps(label, card))),
+      relations: [...this.querySelectorAll('.dependency-sentence')].map(element => element.textContent ?? ''),
+      relationIdentities: [...this.querySelectorAll('.dependency-identities')].map(element => element.textContent ?? ''),
+      relationDepths: [...this.querySelectorAll('.dependency-depth')].map(element => element.textContent ?? ''),
+      relationAriaLabels: [...this.querySelectorAll('.relations button')].map(element => element.getAttribute('aria-label')),
+      relationsOpen: this.querySelector<HTMLDetailsElement>('.relations')!.open,
+      analysisDetailsOpen: this.querySelector<HTMLDetailsElement>('.analysis-details')!.open,
+      guide: this.querySelector('.reading-guide')!.textContent ?? '',
       background: getComputedStyle(this.querySelector('.panel')!).backgroundColor,
     };
   }.toString());
@@ -84,6 +107,17 @@ async function selectIssue(value: string): Promise<void> {
     select.value = value;
     select.dispatchEvent(new Event('change', { bubbles: true }));
   }.toString(), [value]);
+}
+async function panelLayout(): Promise<{ insideViewport: boolean; horizontalOverflow: boolean; textOverflow: boolean }> {
+  return shadowCall(function (this: ShadowRoot) {
+    const panel = this.querySelector<HTMLElement>('.panel')!;
+    const rect = panel.getBoundingClientRect();
+    return {
+      insideViewport: rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight,
+      horizontalOverflow: panel.scrollWidth > panel.clientWidth,
+      textOverflow: [...this.querySelectorAll<HTMLElement>('.dependency-sentence,.dependency-identities,.selected')].some(element => element.scrollWidth > element.clientWidth),
+    };
+  }.toString());
 }
 
 test.beforeAll(async () => {
@@ -121,41 +155,92 @@ test.afterAll(async () => {
   if (profile) await rm(profile, { recursive: true, force: true });
 });
 
-test('separates same-column lines and supports longest-path, card and numbered-relation focus', async () => {
+test('separates same-column lines and explains dependency direction while supporting line and card focus', async () => {
+  await page.bringToFront();
+  await expect.poll(async () => (await state()).edges.length).toBe(5);
   expect(await page.locator('#github-dependency-visualizer-overlay').evaluate(element => element.shadowRoot)).toBeNull();
   const initial = await state();
   expect(initial.metrics).toEqual(['3', '1', '1']);
-  expect(initial.counts).toBe('5 カード / 5 関係');
+  expect(initial.counts).toBe('5 カード / 5 本の依存線');
+  expect(initial.relationsOpen).toBe(true);
+  expect(initial.analysisDetailsOpen).toBe(false);
+  expect(initial.guide).toContain('矢印の先の Issue が、手前の Issue に依存します。');
+  expect(initial.guide).toContain('A → B は「B が A に依存」');
   const sameColumn = initial.edges.filter(edge => edge.key !== key(1, 5));
   expect(new Set(sameColumn.map(edge => edge.path)).size).toBe(4);
   expect(sameColumn.every(edge => edge.path.includes(' L '))).toBe(true);
   expect(initial.edges.filter(edge => edge.critical).map(edge => edge.key)).toEqual([key(1, 2), key(2, 3), key(3, 4)]);
+  expect(initial.edgeDepths).toEqual(['深さ 0 → 1', '深さ 0 → 2', '深さ 0 → 1', '深さ 1 → 2', '深さ 2 → 3']);
+  expect(initial.relationDepths).toEqual(initial.edgeDepths);
+  expect(initial.labelsOverlap).toBe(false);
+  expect(initial.labelsOverlapCards).toBe(false);
 
   await click('.filters button:nth-child(2)');
-  expect((await state()).edges.map(edge => edge.key)).toEqual([key(1, 2), key(2, 3), key(3, 4)]);
+  const critical = await state();
+  expect(critical.edges.map(edge => edge.key)).toEqual([key(1, 2), key(2, 3), key(3, 4)]);
+  expect(critical.edgeLabels).toEqual(['#1 → #2', '#2 → #3', '#3 → #4']);
+  expect(critical.edgeDepths).toEqual(['深さ 0 → 1', '深さ 1 → 2', '深さ 2 → 3']);
+  expect(critical.relations[3]).toBe('#3 は #2 に依存');
+  expect(critical.relations[4]).toBe('#4 は #3 に依存');
+  expect(critical.relationIdentities[3]).toBe('acme/app#2 → acme/app#3');
+  expect(critical.relationAriaLabels[3]).toBe('acme/app#3 は acme/app#2 に依存 · 深さ 1 → 2');
   await click('.filters button:first-child');
   await selectIssue('acme/app#3');
   const selected = await state();
-  expect(selected.selected).toBe('深さ 2 · 直接の入 2 / 出 1 · 下流の影響先 1 件');
+  expect(selected.selected).toBe('依存の深さ 2 · 前提 2 件 / 後続 1 件 · 下流の影響先 1 件');
   expect(selected.edges.filter(edge => edge.opacity === '.12').map(edge => edge.key)).toEqual([key(1, 5)]);
   await selectIssue('');
 
-  await click('.relations summary');
-  expect((await state()).relations[2]).toBe('03  acme/app#1 → acme/app#5');
+  expect((await state()).relations[2]).toBe('#5 は #1 に依存');
   await click('.relations li:nth-child(3) button');
   const focused = await state();
+  expect(focused.selected).toBe('#5 は #1 に依存 · 深さ 0 → 1');
   expect(focused.edges.filter(edge => edge.opacity === '1').map(edge => edge.key)).toEqual([key(1, 5)]);
   expect(focused.edges.find(edge => edge.key === key(1, 5))?.width).toBe('4');
-  await click('.relations li:nth-child(3) button');
+  await shadowCall(function (this: ShadowRoot) { this.querySelector<HTMLButtonElement>('.clear-edge')!.focus(); }.toString());
+  await page.keyboard.press('Enter');
   expect((await state()).edges.every(edge => edge.opacity === '1')).toBe(true);
+  expect((await state()).selected).toBe('一覧で依存を選ぶと、該当する矢印を強調します。');
+  expect(await shadowCall(function (this: ShadowRoot) { return (this.activeElement as HTMLButtonElement)?.dataset.edge; }.toString())).toBe(key(1, 5));
 
-  await page.bringToFront();
   expect((await state()).background).toBe('rgb(255, 255, 255)');
   await page.screenshot({ path: 'docs/dependency-analysis-light.png' });
   await page.evaluate(() => { document.documentElement.dataset.colorMode = 'dark'; });
   await expect.poll(async () => (await state()).background).toBe('rgb(13, 17, 23)');
   expect((await state()).metrics).toEqual(['3', '1', '1']);
   await page.screenshot({ path: 'docs/dependency-analysis-dark.png' });
+
+  await page.setViewportSize({ width: 720, height: 512 });
+  try {
+    await expect.poll(async () => (await state()).edges.length).toBeLessThan(initial.edges.length);
+    expect((await state()).edges.length).toBeGreaterThan(0);
+    expect(await panelLayout()).toEqual({ insideViewport: true, horizontalOverflow: false, textOverflow: false });
+    await shadowCall(function (this: ShadowRoot) { this.querySelector<HTMLElement>('.relations summary')!.focus(); }.toString());
+    await page.keyboard.press('Tab');
+    expect(await shadowCall(function (this: ShadowRoot) { return this.activeElement?.matches('.relations button'); }.toString())).toBe(true);
+    await page.keyboard.press('Enter');
+    expect((await state()).selected).toMatch(/ に依存 · 深さ \d+ → \d+$/);
+    await shadowCall(function (this: ShadowRoot) { this.querySelector<HTMLButtonElement>('.clear-edge')!.focus(); }.toString());
+    await page.keyboard.press('Enter');
+
+    const originalText = await shadowCall<string[]>(function (this: ShadowRoot) {
+      const targets = [...this.querySelectorAll('.dependency-sentence,.dependency-identities,.selected')];
+      const original = targets.map(element => element.textContent ?? '');
+      const issue = `acme/${'dependency-visualization-'.repeat(4)}#12345`;
+      for (const target of targets) target.textContent = target.matches('.dependency-identities') ? `${issue} → ${issue}` : `${issue} は ${issue} に依存`;
+      return original;
+    }.toString());
+    try {
+      expect(await panelLayout()).toEqual({ insideViewport: true, horizontalOverflow: false, textOverflow: false });
+    } finally {
+      await shadowCall(function (this: ShadowRoot, original: string[]) {
+        [...this.querySelectorAll('.dependency-sentence,.dependency-identities,.selected')].forEach((element, index) => { element.textContent = original[index]!; });
+      }.toString(), [originalText]);
+    }
+  } finally {
+    await page.setViewportSize({ width: 1440, height: 1024 });
+  }
+  await expect.poll(async () => (await state()).edges.length).toBe(5);
 });
 
 test('warns about cycles and leaves dependency depth uncomputed', async () => {
@@ -165,12 +250,14 @@ test('warns about cycles and leaves dependency depth uncomputed', async () => {
   const cyclic = await state();
   expect(cyclic.metrics).toEqual(['—', '1', '1']);
   expect(cyclic.counts).toContain('循環 4 カード');
-  expect(cyclic.note).toContain('循環を解消するまで深さ・最長経路を算出できません');
+  expect(cyclic.note).toContain('循環を解消するまで依存の深さ・最長経路を算出できません。循環内の線は赤い破線です。');
   expect(cyclic.criticalDisabled).toBe(true);
   expect(cyclic.edges.every(edge => !edge.critical)).toBe(true);
   expect(cyclic.edges.filter(edge => edge.cyclic)).toHaveLength(5);
   expect(cyclic.edges.filter(edge => edge.cyclic).every(edge => edge.dash === '6 4')).toBe(true);
   expect(cyclic.edges.find(edge => edge.key === key(1, 5))?.cyclic).toBe(false);
+  expect(cyclic.edgeDepths).toEqual(Array(6).fill('深さ 未算出'));
+  expect(cyclic.relationDepths).toEqual(Array(6).fill('深さ 未算出'));
   await selectIssue('acme/app#3');
-  expect((await state()).selected).toContain('深さ 未算出');
+  expect((await state()).selected).toContain('依存の深さ 未算出');
 });

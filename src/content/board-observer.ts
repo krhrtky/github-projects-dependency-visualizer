@@ -1,9 +1,10 @@
 import { OVERLAY_ID } from '../renderer/svg-renderer';
+const owned = `#${OVERLAY_ID}, [data-dependency-relationships]`;
 export function isExternalMutation(records: MutationRecord[]): boolean {
   return records.some(record => {
-    if (record.target instanceof Element && record.target.closest(`#${OVERLAY_ID}`)) return false;
+    if (record.target instanceof Element && record.target.closest(owned)) return false;
     if (record.type !== 'childList') return true;
-    return [...record.addedNodes, ...record.removedNodes].some(n => !(n instanceof Element && n.id === OVERLAY_ID));
+    return [...record.addedNodes, ...record.removedNodes].some(n => !(n instanceof Element && n.matches(owned)));
   });
 }
 export class BoardObserver {

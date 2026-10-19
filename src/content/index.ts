@@ -11,6 +11,8 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
     const settings = m.settings as Partial<Settings> | undefined;
     if (settings && typeof settings.enabled === 'boolean' && typeof settings.authenticated === 'boolean') controller.configure(settings as Settings);
     respond({ ok: true });
+  } else if (m.type === 'RELATIONSHIPS_CHANGED' && background) {
+    controller.refreshRelationships(); respond({ ok: true });
   } else if (m.type === 'PAGE_STATUS' && popup) respond(controller.status);
   return false;
 });

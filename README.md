@@ -1,16 +1,19 @@
 # GitHub Projects Dependency Visualizer
 
-GitHub Projects の **Board・Table・Roadmap** で、Issue の依存関係と複雑さを確認する Chrome 拡張機能です。GitHub のネイティブな依存関係を読み取り、**ブロック元 → ブロック先** の矢印と解析パネルを各 View に重ねて表示します。
+GitHub Projects の **Board・Table・Roadmap** で、Issue の依存関係と複雑さを確認する Chrome 拡張機能です。GitHub のネイティブな依存関係を読み取り、**前提 → 後続（ブロック元 → ブロック先）** の矢印と解析パネルを各 View に重ねて表示します。
 
-- **重なる線を分離**: 接続点とレーンを分散し、同じ列のカード間の線は横へ迂回します。線の番号を関係一覧と照合し、一覧から選んだ関係を強調できます。
+Projects 内から依存・親子関係を編集し、GitHub 標準のフィルターで絞り込めます。依存の表示用フィールドを Project に同期すると、標準のフィールド選択や並べ替えにも使えます。
+
+- **依存する Issue と深さを表示**: 線の上段に `#1 → #2`、下段に `深さ 0 → 1` のように両端の Issue と依存の深さを表示します。「依存の一覧」の `#2 は #1 に依存` を選ぶと、その線と両端カードのバッジを強調できます。一覧でも両端の深さを確認できます。
+- **重なる線を分離**: 接続点とレーンを分散し、同じ列のカード間の線は横へ迂回します。
 - **各 View で依存関係を追跡**: Board のカード、Table のタイトルセル、Roadmap のタイムライン上のバーを接続します。Roadmap では、バーが見えない場合は同じ Issue の可視タイトルセルへ接続します。
-- **深さと複雑さを表示**: すべての View の解析パネルで、深さ・直接の入出次数・最長依存段数・分岐数・合流数を確認できます。Issue を選ぶと、上流・下流の関係と下流への影響先件数を表示します。Board ではカード上にも深さと入出次数の小さなバッジを表示します。
+- **依存の深さと複雑さを表示**: 解析パネルの「深さ・分岐・合流の詳細」を開くと、依存の最大深さ・分岐数・合流数と数値の定義を確認できます。Issue を選ぶと、依存の深さ・直接の前提数と後続数・下流への影響先件数を表示し、上流・下流の依存を強調します。Board ではカード上にも依存の深さと前提・後続の数を小さなバッジで表示します。
 - **最長経路を追跡**: 最長の依存経路を強調し、「最長経路のみ」で絞り込めます。同じ長さの最長経路が複数あれば、すべてを対象にします。
-- **循環を警告**: 循環している関係を赤い破線で表示します。循環がある間は深さ・最長経路を算出しません。
+- **循環を警告**: 循環している関係を赤い破線で表示します。循環がある間は依存の深さ・最長経路を算出しません。
 
 **解析対象は画面に表示されている Issue 間の関係です。最長経路は依存関係の辺数で計算し、期間・工数を使うクリティカルパスではありません。** Roadmap の日付やバーの長さは最長経路の計算に使いません。取得中は暫定値、API の取得失敗や件数上限がある場合は不完全な解析として表示します。
 
-![同一列の依存線の分離、カードの深さ、最長経路と関係一覧を表示した公開サンプル](docs/dependency-analysis-light.png)
+![Issue のペアを示す依存線と、依存の一覧を表示した公開サンプル](docs/dependency-analysis-light.png)
 
 [Dark テーマの表示例](docs/dependency-analysis-dark.png)
 
@@ -34,29 +37,70 @@ Chrome 114 以降を使用します。
 1. 対象の GitHub Project の **Board・Table・Roadmap** のいずれかを開きます。
 2. 拡張機能の Popup に Fine-grained PAT または PAT (classic) を入力し、「PAT を設定」を押します。
 3. 「依存関係を表示」を ON にします。初期値は OFF です。
-4. 画面右下の解析パネルで最長依存段数・分岐・合流を確認します。「最長経路のみ」、Issue の選択、番号付きの関係一覧で調べたい依存関係を絞り込みます。パネルは見出しから折りたためます。
+4. 画面右下の解析パネルにある「依存の一覧」で、`#2 は #1 に依存` のような文を確認します。一覧は初期表示で開いており、行を選ぶと該当する線と両端カードのバッジを強調します。「強調を解除」で全体の表示へ戻せます。Issue の選択や「最長経路のみ」でも絞り込めます。依存の最大深さ・分岐・合流は「深さ・分岐・合流の詳細」を開いて確認します。パネル全体は見出しから折りたためます。
 5. GitHub 上で依存関係を変更した後や、取得エラーの原因を解決した後は **Refresh** を押します。
 6. **Logout** は PAT と関係キャッシュを削除し、表示を OFF にします。
 
 | View | 線の接続先と数値の確認方法 |
 | --- | --- |
-| Board | カードを接続します。カード上のバッジと解析パネルで深さ・入出次数を確認できます。 |
-| Table | 各行の Issue タイトルセルを接続します。深さ・入出次数・下流への影響数は解析パネルで確認します。 |
-| Roadmap | 同じ Issue の可視バーを優先します。バーがない場合や表示期間外の場合は、可視タイトルセルに接続します。数値は解析パネルで確認します。 |
+| Board | カードを接続します。カード上のバッジと解析パネルで依存の深さ・前提数・後続数を確認できます。 |
+| Table | 各行の Issue タイトルセルを接続します。依存の深さ・前提数・後続数・下流への影響数は解析パネルの Issue 選択で確認します。 |
+| Roadmap | 同じ Issue の可視バーを優先します。バーがない場合や表示期間外の場合は、可視タイトルセルに接続します。数値は解析パネルの Issue 選択で確認します。 |
 
 Table・Roadmap の行には数値バッジを重ねません。タイトルや日付の読みやすさを保ち、Issue ごとの数値は解析パネルに表示します。タイトルセルもバーも見えない Issue は接続・解析の対象外です。
 
 | 表示 | 意味 |
 | --- | --- |
-| 深さ | 入ってくる依存関係がない Issue を 0 とした、そこまでの最長の辺数 |
-| 入 | その Issue を直接ブロックする Issue 数 |
-| 出 | その Issue が直接ブロックする Issue 数 |
+| 依存の深さ | 可視範囲で前提のない Issue を 0 とした、そこまでの最長経路に含まれる接続数。例: A → B → C では A が 0、B が 1、C が 2 |
+| 前提 | その Issue を直接ブロックする Issue 数 |
+| 後続 | その Issue が直接ブロックする Issue 数 |
 | 下流の影響先 | 直接・間接にブロックする、重複を除いた Issue 数。自分自身を除く |
-| 分岐カード／項目 | 出が 2 以上の Issue 数 |
-| 合流カード／項目 | 入が 2 以上の Issue 数 |
-| 最長依存段数 | 可視範囲のグラフに含まれる最長経路の辺数 |
+| 分岐カード／項目 | 後続が 2 件以上ある Issue 数 |
+| 合流カード／項目 | 前提が 2 件以上ある Issue 数 |
+| 依存の最大深さ | 可視範囲のグラフに含まれる最長経路の辺数 |
+| `#1 → #2` などの矢印ラベル | 実際につながっている Issue のペア。`#2` が `#1` に依存することを示す。数字は Issue 番号 |
+| 矢印ラベル下段の `深さ 0 → 2` | 前提の Issue の深さが 0、後続の Issue の深さが 2。カードと同じ 0 起点の最長経路による深さを使うため、途中の深さを飛び越える線もある。循環がある場合は `深さ 未算出` |
 
-線の色だけで判断せず、番号・関係一覧・Issue 選択も利用できます。利用できる余白が少なく線の間隔を確保できない場合は、解析パネルに案内を表示します。
+矢印の先の Issue が、手前の Issue に依存します。**`#1 → #2` は「`#2` は `#1` に依存」**という意味です。可視範囲が単一 Repository なら `#1`、複数 Repository なら `app#1`、異なる所有者に同名の Repository がある場合は `acme/app#1` と表示します。線の長い名前は省略します。余白が足りない場合や省略で Issue を区別できない場合は線のラベルを省略し、一覧に完全な識別子を表示します。一覧には常に `owner/repo#番号` を併記します。
+
+前提・後続の数は直接つながる Issue だけを数え、間接的な影響は「下流の影響先」で確認します。線を追いにくい場合は「依存の一覧」や Issue 選択で絞り込めます。利用できる余白が少なく線の間隔を確保できない場合は、解析パネルに案内を表示します。
+
+## Projects の標準操作との統合
+
+表示を ON にすると、各カード・行に **Relationships** が追加されます。ここから Blocked by（前提）、Blocking（後続）、Parent issue（親）、Sub-issues（子）の実際の関係を取得・追加・削除します。追加先は `owner/repo#123` または GitHub の Issue URL で指定します。別の親がある子 Issue は、既存の親を解除してから追加します。
+
+### 標準フィルター
+
+View の上部にある「ブロック中の Issue」「他をブロックする Issue」、および関係編集画面の絞り込みボタンは、GitHub 標準フィルターバーへ条件を追加します。既存の条件を残し、OR を含む条件は括弧で囲んでから追加します。フィルターバーを検出できない場合は、同じ View の `filterQuery` 付き URL を開きます。
+
+| 条件 | 標準フィルターの例 |
+| --- | --- |
+| 前提にブロックされる Issue | `is:blocked` |
+| 他をブロックする Issue | `is:blocking` |
+| 指定した Issue に依存する Issue | `blocked-by:acme/app#1` |
+| 指定した Issue をブロックする Issue | `blocking:acme/app#2` |
+| 指定した親の子 Issue | `parent-issue:acme/app#10` |
+
+標準フィルターは GitHub が Project のデータに適用します。拡張の可視範囲だけで判定しません。条件の保存は通常どおり GitHub の View 保存操作で行います。依存フィルターは GitHub の[公開配信コード](https://github.githubassets.com/assets/memex-1088950f07fae620-9ca0ff903e7899a2.js.map)、親子の条件は[公式フィールド仕様](https://docs.github.com/en/issues/planning-and-tracking-with-projects/understanding-fields/about-parent-issue-and-sub-issue-progress-fields)に基づきます。
+
+### 標準フィールドへの同期
+
+「標準フィールドに同期」を開くと、対象 Project、Issue 件数、作成・表示するフィールドを確認できます。「同期を実行」で、Project 全体のアーカイブされていない Issue を対象に次の実フィールドを作成・更新します。画面外や現在の View のフィルターで隠れた Issue も含みます。上限は 1,000 Issue です。Draft・PR・権限で読めない項目は対象外として集計します。
+
+| フィールド | 型と内容 |
+| --- | --- |
+| Dependency blockers | Text。直接の前提を `owner/repo#番号` の一覧で表示 |
+| Dependency blocking | Text。直接の後続を同じ形式で表示 |
+| Dependency status | Single select。`Blocked`（前提あり）、`Blocking`（後続あり）、`Both`（両方）、`None`（両方なし） |
+| Parent issue / Sub-issue progress | GitHub 標準の親・子の進捗フィールドを再利用 |
+
+依存の3列は **表示用の同期値**です。セルの文字列や選択値を直接編集しても、Issue の関係は変わりません。関係の変更は Relationships で行ってください。`Blocked` 等は直接の関係の有無を表し、相手の完了状態に基づく開始可否は示しません。親子の操作には GitHub 標準の Parent issue セル・階層表示も使えます。
+
+明示的な `/views/番号` がある Board・Table では、既存の表示列を残してこれらのフィールドを View に追加します。Roadmap や View 番号のない URL では、フィールドの表示設定を自動変更しません。反映後は画面の再読み込み操作を使うか、GitHub の標準フィールドメニューから表示してください。Dependency status は通常の選択フィールドとしてフィルター・グループ化に使え、Text 列は表示・並べ替えに使えます。
+
+初回同期後、この拡張から依存を編集すると、変更した両端の同期値も更新します。GitHub 本体・別のツール・他の利用者による変更は、再度「標準フィールドに同期」を実行して反映してください。定期同期は行いません。取得・書き込みに失敗した Issue と、View の表示設定を更新できなかった場合は結果に表示します。失敗を「関係なし」に置き換えません。権限を失った項目の古い同期値が残る場合があるため、同期結果も確認してください。
+
+拡張が作成したフィールドの ID だけを端末に記録し、同名の既存フィールドを自動で引き継いだり上書きしたりしません。拡張の保存データを消した場合、残った同名フィールドは競合として扱います。既存フィールドを確認・改名してから再設定してください。同期・編集の途中に API が失敗した場合、それまでに成功した変更を自動で元に戻したり、再送したりしません。
 
 ## PAT の準備
 
@@ -68,12 +112,14 @@ GitHub の Settings → Developer settings → Personal access tokens → Fine-g
 
 - Resource owner に対象 Repository の所有者を選択します。組織の Repository では対象の組織を選びます。
 - Repository access を **Only selected repositories** とし、取得対象の Repository を選びます。
-- Repository permissions の **Issues: Read-only** を選びます。Projects の書き込み権限は不要です。
+- 依存関係の表示だけを使う場合は、Repository permissions の **Issues: Read-only** を選びます。表示だけなら Projects の書き込み権限は不要です。
 - 組織による管理者承認が必要な場合は、承認後に利用します。承認待ちのトークンは非公開 Repository を取得できません。
 
 Fine-grained PAT は GitHub Enterprise Cloud の SSO に対応し、SSO 認可はトークン作成時に行われます。作成後の **Configure SSO** 操作は不要です。対象の組織が Resource owner に表示されない場合は、組織の PAT ポリシーとメンバー資格を確認してください。[GitHub 公式の PAT 管理手順](https://docs.github.com/en/enterprise-cloud@latest/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) を参照してください。
 
 利用する `blocked_by` 一覧取得 API は、Fine-grained PAT の Issues read 権限に対応します。[GitHub 公式 API 仕様](https://docs.github.com/en/rest/issues/issue-dependencies?apiVersion=2026-03-10#list-dependencies-an-issue-is-blocked-by) を参照してください。拡張は API version `2026-03-10` を使用します。
+
+関係を編集する場合は対象 Repository の **Issues: Read and write** が必要です。標準フィールドへ同期する場合は、さらに対象組織の **Projects: Read and write** と Project の編集権限が必要です。ユーザー所有の Project では PAT (classic) の `project` scope を使用します。classic で非公開 Issue も扱う場合は `repo` も必要です。権限は[依存 API](https://docs.github.com/en/rest/issues/issue-dependencies?apiVersion=2026-03-10)、[親子 API](https://docs.github.com/en/rest/issues/sub-issues?apiVersion=2026-03-10)、[Projects API の認証](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-api-to-manage-projects#authentication)に従います。
 
 複数 Repository を含む Project では、それぞれへのアクセス権限が必要です。異なる Resource owner の Repository は、単一の Fine-grained PAT でアクセスできない場合があります。
 
@@ -87,7 +133,7 @@ GitHub の Settings → Developer settings → Personal access tokens → Tokens
 
 SSO の認可手順は [GitHub 公式ドキュメント](https://docs.github.com/en/enterprise-cloud@latest/authentication/authenticating-with-single-sign-on/authorizing-a-personal-access-token-for-use-with-single-sign-on) を参照してください。組織または Enterprise が PAT (classic) を禁止している場合は利用できません。
 
-**repo scope は書き込みを含む広い権限を持ち、アクセス可能な複数 Repository に及びます。** 拡張が送信するリクエストは依存関係取得の GET のみですが、トークン自体は読み取り専用になりません。[GitHub 公式の scope 定義](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps#available-scopes) を確認してください。
+**repo scope は書き込みを含む広い権限を持ち、アクセス可能な複数 Repository に及びます。** 表示だけでも、トークン自体は読み取り専用になりません。[GitHub 公式の scope 定義](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps#available-scopes) を確認してください。
 
 ### 取得エラーの確認
 
@@ -107,11 +153,11 @@ PAT 設定直後の「設定済み」は保存状態を示し、有効性と権�
 
 ## セキュリティ
 
-拡張は **読み取り専用**です。Issue、依存関係、Project のデータを更新しません。実行コードはすべて配布フォルダに含み、外部サーバー・CDN・Analytics は利用しません。
+表示だけでは GitHub のデータを更新しません。Relationships の追加・削除と「同期を実行」は、Issue の関係・拡張所有の Project フィールド・対象 View の表示列を更新します。実行コードはすべて配布フォルダに含み、外部サーバー・CDN・Analytics は利用しません。
 
-PAT は [Chrome の `storage.session`](https://developer.chrome.com/docs/extensions/reference/api/storage#property-session) に保存し、アクセスを `TRUSTED_CONTEXTS` に制限します。Popup の入力欄は送信時に消去します。Content Script に PAT を渡しません。ブラウザの再起動、拡張の再読み込み・更新・無効化などで PAT は失われます。表示 ON/OFF だけを `storage.local` に保存し、`storage.sync` や Web の localStorage / sessionStorage は利用しません。
+PAT は [Chrome の `storage.session`](https://developer.chrome.com/docs/extensions/reference/api/storage#property-session) に保存し、アクセスを `TRUSTED_CONTEXTS` に制限します。Popup の入力欄は送信時に消去します。Content Script に PAT を渡しません。ブラウザの再起動、拡張の再読み込み・更新・無効化などで PAT は失われます。表示 ON/OFF と、Project ごとの拡張所有フィールド ID だけを `storage.local` に保存し、`storage.sync` や Web の localStorage / sessionStorage は利用しません。
 
-Background だけが `https://api.github.com/repos/.../dependencies/blocked_by` へ GET を送信します。Cookie は送信せず、リダイレクトは拒否します。送信元・メッセージ・Pagination の URL を検証し、任意 URL を取得する操作は提供しません。API レスポンスのタイトル・本文は保持・転送せず、レスポンス本体をディスクにキャッシュしません。PAT、タイトル、本文をログに出力しません。
+Background だけが固定された Issue・依存・親子の REST API と `/graphql` へリクエストします。GraphQL のクエリと Mutation は拡張に同梱し、Content Script から任意クエリや URL を指定できません。Project の同期要求は送信元の Project・View と照合します。Cookie は送信せず、リダイレクトは拒否します。送信元・メッセージ・Pagination の URL を検証します。Issue のタイトル・本文は保持・転送せず、レスポンス本体をディスクにキャッシュしません。PAT、タイトル、本文をログに出力しません。
 
 必要な拡張権限は `storage` と `github.com` / `api.github.com` の host permissions です。GitHub 内の SPA 遷移を検出するため Content Script は `github.com/*` に読み込みますが、View の検出と API 操作は対応する Project URL に限定します。
 

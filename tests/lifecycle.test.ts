@@ -39,6 +39,26 @@ describe('lifecycle', () => {
    controller.configure({ enabled: false, authenticated: true }); await settle(); expect(document.getElementById(OVERLAY_ID)).toBeNull(); expect(disconnect).toHaveBeenCalled();
    controller.configure({ enabled: true, authenticated: true }); await settle(); expect(controller.status.state).toBe('ready');
  });
+ it('keeps dependency selection when a control receives focus and refreshes on window focus', async () => {
+   const attach = vi.spyOn(HTMLElement.prototype, 'attachShadow');
+   await settle();
+   const shadow = attach.mock.results.map(result => result.value as ShadowRoot).find(root => root.host.id === OVERLAY_ID)!;
+   const dependency = shadow.querySelector<HTMLButtonElement>('.relations button')!;
+   dependency.click();
+   const lookups = sendMessage.mock.calls.filter(call => call[0].type === 'DEPENDENCIES').length;
+   const settings = sendMessage.mock.calls.filter(call => call[0].type === 'GET_STATE').length;
+   shadow.querySelector<HTMLSelectElement>('select')!.focus();
+   await settle();
+   expect(shadow.querySelector('.relations button')!.getAttribute('aria-pressed')).toBe('true');
+   expect(controller.status).toMatchObject({ state: 'ready', edges: 1 });
+   expect(sendMessage.mock.calls.filter(call => call[0].type === 'DEPENDENCIES')).toHaveLength(lookups);
+   expect(sendMessage.mock.calls.filter(call => call[0].type === 'GET_STATE')).toHaveLength(settings);
+   window.dispatchEvent(new Event('focus'));
+   await settle();
+   expect(sendMessage.mock.calls.filter(call => call[0].type === 'GET_STATE')).toHaveLength(settings + 1);
+   expect(sendMessage.mock.calls.filter(call => call[0].type === 'DEPENDENCIES')).toHaveLength(lookups + 1);
+   expect(controller.status).toMatchObject({ state: 'ready', edges: 1 });
+ });
  it('releases resources on view switches and SPA navigation', async () => {
    await settle(); const root = document.querySelector('#board')!;
    root.setAttribute('data-testid', 'table'); await settle(); expect(controller.status.state).toBe('no-view'); expect(document.getElementById(OVERLAY_ID)).toBeNull();

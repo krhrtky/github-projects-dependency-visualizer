@@ -28,6 +28,13 @@ describe('fixture DOM adapter (not a live GitHub DOM contract)', () => {
    const cards = extractCards(detectBoard(document, url)!);
    expect(cards.map(c => `${c.issue.repo}#${c.issue.number}`)).toEqual(['app#1', 'api#1', 'app#3']);
  });
+ it('keeps card identity when native fields reference other issues', () => {
+   const board = detectBoard(document, url)!;
+   const card = board.querySelector('article')!;
+   const fields = document.createElement('ul'); fields.setAttribute('aria-label', 'Fields'); fields.dataset.testid = 'card-labels';
+   fields.append(Object.assign(document.createElement('a'), { href: '/acme/app/issues/42', textContent: 'Parent issue' })); card.append(fields);
+   expect(extractCards(board).map(c => `${c.issue.repo}#${c.issue.number}`)).toEqual(['app#1', 'api#1', 'app#3']);
+ });
  it('skips ambiguous cards and offscreen cards and safely retains duplicate instances', () => {
    const board = detectBoard(document, url)!;
    const first = board.querySelector('article')!;
@@ -51,18 +58,33 @@ describe('SVG routing and ownership', () => {
    expect(shadow.querySelector('.metric strong')!.textContent).toBe('1');
    renderer.destroy();
  });
- it('retains keyboard focus when selecting and deselecting a numbered relation', () => {
+ it('retains keyboard focus when selecting a dependency and clearing its highlight', () => {
    const attach = vi.spyOn(HTMLElement.prototype, 'attachShadow');
    const renderer = new SvgRenderer(); const cards = extractCards(detectBoard(document, url)!);
    renderer.render(cards, [{ blocker: cards[0]!.issue, blocked: cards[1]!.issue }], new DOMRect(0, 0, 900, 600), { loading: true, incomplete: true });
    const shadow = attach.mock.results[0]!.value as ShadowRoot;
-   const list = shadow.querySelector<HTMLDetailsElement>('.relations')!; list.open = true;
+   const list = shadow.querySelector<HTMLDetailsElement>('.relations')!;
+   expect(list.open).toBe(true);
    const button = list.querySelector('button')!; button.focus(); button.click();
+   expect(button.querySelector('.dependency-sentence')!.textContent).toBe('api#1 は app#1 に依存');
+   expect(button.querySelector('.dependency-identities')!.textContent).toBe('acme/app#1 → acme/api#1');
+   expect(button.querySelector('.dependency-depth')!.textContent).toBe('深さ 0 → 1');
+   expect(button.getAttribute('aria-label')).toBe('acme/api#1 は acme/app#1 に依存 · 深さ 0 → 1');
+   expect(shadow.querySelector('text[data-dependency-pair]')!.textContent).toBe('app#1 → api#1');
+   expect(shadow.querySelector('text[data-dependency-depth]')!.textContent).toBe('深さ 0 → 1');
    expect(shadow.activeElement).toBe(button);
    expect(button.getAttribute('aria-pressed')).toBe('true');
-   button.click(); expect(button.getAttribute('aria-pressed')).toBe('false');
+   const clear = shadow.querySelector<HTMLButtonElement>('.clear-edge')!;
+   expect(clear.textContent).toBe('強調を解除');
+   clear.focus(); clear.click();
+   expect(button.getAttribute('aria-pressed')).toBe('false');
+   expect(shadow.activeElement).toBe(button);
+   expect(shadow.querySelector('.selected')!.textContent).toBe('一覧で依存を選ぶと、該当する矢印を強調します。');
    expect(shadow.querySelector('.note.warning')!.textContent).toContain('取得中の暫定値');
    expect(shadow.querySelector('.note.warning')!.textContent).toContain('解析は不完全');
+   renderer.render(cards, [{ blocker: cards[0]!.issue, blocked: cards[1]!.issue }], new DOMRect(0, 0, 900, 600), { loading: false, incomplete: false });
+   expect(list.querySelector('button')).toBe(button);
+   expect(shadow.activeElement).toBe(button);
    renderer.destroy();
  });
  it('routes right, left and vertical with endpoints on card boundaries', () => {

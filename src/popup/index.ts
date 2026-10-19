@@ -33,7 +33,7 @@ async function update(): Promise<void> {
     board.textContent = `${view}${states[status.state]} ${status.view && status.view !== 'board' ? '項目' : 'カード'} ${status.cards} / 関係 ${status.edges} / 失敗 ${status.failed}${status.truncated ? '（上限200 Issue）' : ''}`;
     if (status.analysis) {
       const data = status.analysis;
-      analysis.textContent = `${data.maxDepth === null ? `循環 ${data.cycleNodes} 件・最長経路は未算出` : `最長 ${data.maxDepth} 段`} / 分岐 ${data.branches} / 合流 ${data.merges}。${status.state === 'loading' ? '取得中の暫定値。' : status.failed || status.truncated ? '解析は不完全です。' : ''}画面右下のパネルで経路を絞り込めます。`;
+      analysis.textContent = `${data.maxDepth === null ? `循環 ${data.cycleNodes} 件・最長経路は未算出` : `依存の最大深さ ${data.maxDepth}`} / 分岐 ${data.branches} / 合流 ${data.merges}。${status.state === 'loading' ? '取得中の暫定値。' : status.failed || status.truncated ? '解析は不完全です。' : ''}画面右下のパネルで経路を絞り込めます。`;
     }
     problems.push(...status.errors);
   } catch { board.textContent = '対象の GitHub Projects タブを開いてください。拡張機能を読み込んだ直後はタブを再読み込みしてください。'; }

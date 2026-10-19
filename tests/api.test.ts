@@ -7,7 +7,7 @@ const row = { html_url: 'https://github.com/acme/api/issues/1', number: 1 };
 const auth = { getToken: async () => 'secret-fixture-token' };
 const response = (body: unknown = [row], status = 200, headers: Record<string, string> = {}) => new Response(JSON.stringify(body), { status, headers });
 const client = (fn: ReturnType<typeof vi.fn>, now = Date.now) => new GitHubApi(auth, fn as typeof fetch, now);
-describe('fixed read-only GitHub API', () => {
+describe('fixed GitHub API transport', () => {
  it('normalizes blockers, excludes duplicates and uses fixed security options', async () => {
    const fetcher = vi.fn().mockResolvedValue(response([row, row]));
    expect(await client(fetcher).blockedBy(issue)).toEqual([{ blocker: { owner: 'acme', repo: 'api', number: 1 }, blocked: issue }]);

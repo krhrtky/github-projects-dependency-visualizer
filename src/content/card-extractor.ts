@@ -34,6 +34,7 @@ function visible(element: HTMLElement, bounds?: DOMRect): boolean {
 function identity(element: HTMLElement): IssueIdentity | null {
   const identities = new Map<string, IssueIdentity>();
   for (const anchor of element.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+    if (anchor.closest('ul[aria-label="Fields"], [data-testid="card-labels"], [data-dependency-relationships]')) continue;
     const issue = parseIssueUrl(anchor.href);
     if (issue) identities.set(issueKey(issue), issue);
   }

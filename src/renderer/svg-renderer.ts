@@ -1,13 +1,15 @@
 import { analyzeGraph, edgeKey, type Dependency, type GraphAnalysis } from '../domain/graph';
 import { issueKey } from '../domain/issue';
 import type { BoardCard } from '../content/card-extractor';
-import { routeEdges, type Rect, type RoutedEdge } from './geometry';
+import { routeEdges, type Point, type Rect, type RoutedEdge } from './geometry';
 import { AnalysisPanel, type AnalysisContext, type ViewFilter } from './analysis-panel';
+import { dependencyDepth, dependencyPair, issueLabels } from './labels';
 export const OVERLAY_ID = 'github-dependency-visualizer-overlay';
 const NS = 'http://www.w3.org/2000/svg';
 const COLORS = ['var(--dep-blue,#0969da)', 'var(--dep-purple,#8250df)', 'var(--dep-teal,#1a7f78)', 'var(--dep-pink,#bf3989)', 'var(--dep-muted,#57606a)'];
 const CRITICAL = 'var(--dep-critical,#bc4c00)';
 const CYCLE = 'var(--dep-cycle,#cf222e)';
+const LABEL_CHARACTER_WIDTH = 5.5;
 function colorIndex(key: string): number {
   return [...key].reduce((value, char) => (value * 31 + char.charCodeAt(0)) >>> 0, 0) % COLORS.length;
 }
@@ -31,6 +33,33 @@ function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string,
   const element = document.createElementNS(NS, tag);
   for (const [key, value] of Object.entries(attrs)) element.setAttribute(key, value);
   return element;
+}
+function compactReference(reference: string, limit: number): string | undefined {
+  if (reference.length <= limit) return reference;
+  const number = reference.slice(reference.lastIndexOf('#'));
+  if (reference === number || number.length + 2 > limit) return undefined;
+  return `${reference.slice(0, limit - number.length - 1)}…${number}`;
+}
+function compactLabels(references: ReadonlyMap<string, string>, limit: number): ReadonlyMap<string, string | undefined> {
+  const candidates = [...references].map(([key, reference]) => [key, compactReference(reference, limit)] as const);
+  const counts = new Map<string, number>();
+  for (const [, label] of candidates) {
+    if (label) counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return new Map(candidates.map(([key, label]) => [key, label && counts.get(label) === 1 ? label : undefined]));
+}
+function labelCandidates(route: RoutedEdge): readonly Point[] {
+  if (route.side !== 'direct') {
+    const top = Math.min(route.points[0]!.y, route.points[route.points.length - 1]!.y);
+    const bottom = Math.max(route.points[0]!.y, route.points[route.points.length - 1]!.y);
+    const inset = Math.min(6, (bottom - top) / 2);
+    return [0, -18, 18, -36, 36, -54, 54, -72, 72].map(offset => ({ x: route.label.x, y: Math.max(top + inset, Math.min(route.label.y + offset, bottom - inset)) }));
+  }
+  const [start, first, second, end] = route.points;
+  return [.5, .45, .55, .4, .6, .35, .65, .3, .7].map(t => ({
+    x: (1 - t) ** 3 * start!.x + 3 * (1 - t) ** 2 * t * first!.x + 3 * (1 - t) * t ** 2 * second!.x + t ** 3 * end!.x,
+    y: (1 - t) ** 3 * start!.y + 3 * (1 - t) ** 2 * t * first!.y + 3 * (1 - t) * t ** 2 * second!.y + t ** 3 * end!.y,
+  })).sort((a, b) => Math.hypot(a.x - route.label.x, a.y - route.label.y) - Math.hypot(b.x - route.label.x, b.y - route.label.y));
 }
 export class SvgRenderer {
   private host?: HTMLDivElement;
@@ -105,8 +134,18 @@ export class SvgRenderer {
     }
     const routes = this.routes;
     const traced = this.filter.issue ? tracedEdges(analysis, this.filter.issue) : undefined;
+    const references = issueLabels(analysis.nodes.keys());
+    const compactByLimit = new Map<number, ReadonlyMap<string, string | undefined>>();
+    const compactFor = (limit: number): ReadonlyMap<string, string | undefined> => {
+      const cached = compactByLimit.get(limit);
+      if (cached) return cached;
+      const compact = compactLabels(references, limit);
+      compactByLimit.set(limit, compact);
+      return compact;
+    };
     const labels = document.createDocumentFragment();
-    for (const [index, edge] of graph.entries()) {
+    const placedLabels: Rect[] = [];
+    for (const edge of graph) {
       const key = edgeKey(edge); const routed = routes.get(key)!;
       const critical = analysis.criticalEdgeKeys.has(key); const cyclic = analysis.cycleEdgeKeys.has(key);
       if (this.filter.criticalOnly && !critical) continue;
@@ -114,30 +153,67 @@ export class SvgRenderer {
       const opacity = focused && (!traced || traced.has(key)) ? '1' : '.12';
       const palette = colorIndex(issueKey(edge.blocker));
       const color = cyclic ? CYCLE : critical ? CRITICAL : COLORS[palette]!;
+      const from = issueKey(edge.blocker); const to = issueKey(edge.blocked);
+      const depth = dependencyDepth(edge, analysis.nodes);
+      const description = `${from} → ${to} · ${depth}`;
       const group = svg('g', { opacity, 'data-edge-key': key, 'data-critical': String(critical), 'data-cycle': String(cyclic) });
       const path = svg('path', { d: routed.path, fill: 'none', stroke: color, 'stroke-width': this.filter.edge === key ? '4' : critical || cyclic ? '3' : '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'marker-end': `url(#dependency-arrow${cyclic ? '-cycle' : critical ? '' : `-${palette}`})` });
       if (cyclic) path.setAttribute('stroke-dasharray', '6 4');
-      const title = svg('title'); title.textContent = `${issueKey(edge.blocker)} → ${issueKey(edge.blocked)}`;
+      const title = svg('title'); title.textContent = description;
       path.append(title); group.append(path); fragment.append(group);
-      const label = svg('g', { opacity, transform: `translate(${routed.label.x},${routed.label.y})` });
-      const number = String(index + 1).padStart(2, '0'); const width = Math.max(20, number.length * 6 + 8);
-      label.append(svg('rect', { x: String(-width / 2), y: '-8', width: String(width), height: '16', rx: '5', fill: 'var(--bgColor-default,#fff)', stroke: color, 'stroke-width': '1' }));
-      const text = svg('text', { x: '0', y: '3.5', 'text-anchor': 'middle', fill: color, 'font-family': 'system-ui,sans-serif', 'font-size': '9', 'font-weight': '700' });
-      text.textContent = number; label.append(text); labels.append(label);
+      if (bounds.height < 36) continue;
+      const depthWidth = [...depth].reduce((size, char) => size + (char === ' ' ? 2.5 : char.charCodeAt(0) > 127 ? 9 : LABEL_CHARACTER_WIDTH), 12);
+      const placement = labelCandidates(routed).map(point => {
+        const { y } = point;
+        if (y < bounds.top + 18 || y > bounds.bottom - 18) return undefined;
+        const obstacles = cards.map(card => card.rect).filter(rect => rect.top < y + 18 && rect.bottom > y - 18);
+        if (obstacles.some(rect => rect.left - 2 <= point.x && rect.right + 2 >= point.x)) return undefined;
+        const left = Math.max(bounds.left + 2, ...obstacles.filter(rect => rect.right < point.x).map(rect => rect.right + 2));
+        const right = Math.min(bounds.right - 2, ...obstacles.filter(rect => rect.left > point.x).map(rect => rect.left - 2));
+        if (point.x < left || point.x > right) return undefined;
+        const maxLabelWidth = Math.min(280, right - left);
+        if (depthWidth > maxLabelWidth) return undefined;
+        const budget = Math.floor((maxLabelWidth - 12) / LABEL_CHARACTER_WIDTH) - 3;
+        if (budget < 2) return undefined;
+        const fromLimit = Math.min(references.get(from)!.length, Math.max(Math.floor(budget / 2), budget - references.get(to)!.length));
+        const fromLabel = compactFor(fromLimit).get(from);
+        const toLabel = compactFor(budget - fromLimit).get(to);
+        if (!fromLabel || !toLabel) return undefined;
+        const pair = dependencyPair(edge, new Map([[from, fromLabel], [to, toLabel]]));
+        const width = Math.max(12 + [...pair].length * LABEL_CHARACTER_WIDTH, depthWidth);
+        const x = Math.max(left + width / 2, Math.min(point.x, right - width / 2));
+        const rect = { left: x - width / 2, right: x + width / 2, top: y - 16, bottom: y + 16, width, height: 32 };
+        if (placedLabels.some(other => rect.left < other.right + 2 && rect.right > other.left - 2 && rect.top < other.bottom + 2 && rect.bottom > other.top - 2)) return undefined;
+        return { x, y, pair, width, rect };
+      }).find(candidate => candidate !== undefined);
+      if (!placement) continue;
+      const { x, y, pair, width, rect } = placement;
+      placedLabels.push(rect);
+      const label = svg('g', { opacity, transform: `translate(${x},${y})`, 'data-dependency-label': key });
+      const labelTitle = svg('title'); labelTitle.textContent = description;
+      label.append(labelTitle);
+      label.append(svg('rect', { x: String(-width / 2), y: '-16', width: String(width), height: '32', rx: '5', fill: 'var(--bgColor-default,#fff)', stroke: color, 'stroke-width': '1' }));
+      const text = svg('text', { x: '0', y: '-4', 'text-anchor': 'middle', fill: color, 'font-family': 'ui-monospace,SFMono-Regular,Consolas,monospace', 'font-size': '9', 'font-weight': '700', 'data-dependency-pair': '' });
+      text.textContent = pair;
+      const depthText = svg('text', { x: '0', y: '10', 'text-anchor': 'middle', fill: color, 'font-family': 'system-ui,sans-serif', 'font-size': '9', 'font-weight': '600', 'data-dependency-depth': '' });
+      depthText.textContent = depth;
+      label.append(text, depthText); labels.append(label);
     }
     this.paths!.replaceChildren(fragment, labels);
     const badges = document.createDocumentFragment();
     const badgeCards = layout === 'board' ? cards : [];
+    const selectedEdge = analysis.edges.find(edge => edgeKey(edge) === this.filter.edge);
+    const selectedIssues = selectedEdge ? new Set([issueKey(selectedEdge.blocker), issueKey(selectedEdge.blocked)]) : undefined;
     for (const card of badgeCards) {
       const key = issueKey(card.issue); const node = analysis.nodes.get(key)!;
       if (!node.inDegree && !node.outDegree) continue;
       if (this.filter.criticalOnly && !node.critical) continue;
       const color = node.cyclic ? CYCLE : node.critical ? CRITICAL : COLORS[colorIndex(key)]!;
-      const label = `${node.cyclic ? '循環' : `深さ ${node.depth ?? '—'}`} · 入${node.inDegree} 出${node.outDegree}`;
-      const width = Math.max(114, label.length * 6.5 + 12);
+      const label = `${node.cyclic ? '循環' : `依存の深さ ${node.depth ?? '未算出'}`} · 前提 ${node.inDegree} · 後続 ${node.outDegree}`;
+      const width = [...label].reduce((size, char) => size + (char.charCodeAt(0) > 127 ? 10 : 6.5), 12);
       const x = Math.max(bounds.left + 2, Math.min(card.rect.right - width - 2, bounds.right - width - 4));
       const y = Math.max(bounds.top + 2, card.rect.top - 9);
-      const badge = svg('g', { transform: `translate(${x},${y})` });
+      const badge = svg('g', { transform: `translate(${x},${y})`, opacity: !selectedIssues || selectedIssues.has(key) ? '1' : '.12' });
       badge.append(svg('rect', { width: String(width), height: '18', rx: '5', fill: 'var(--bgColor-default,#fff)', stroke: color }));
       const text = svg('text', { x: '6', y: '12.5', fill: color, 'font-family': 'system-ui,sans-serif', 'font-size': '10', 'font-weight': '600' });
       text.textContent = label;

@@ -3,6 +3,7 @@ import { issueKey } from '../domain/issue';
 import { MAX_ISSUES, isProjectUrl } from '../shared/config';
 import { send, type IssueResult, type PageStatus, type Settings } from '../shared/messages';
 import { SvgRenderer } from '../renderer/svg-renderer';
+import { RelationshipControls } from '../renderer/relationship-controls';
 import { detectProjectView, type ProjectView } from './board-detector';
 import { extractCards, projectViewRect } from './card-extractor';
 import { BoardObserver, isExternalMutation } from './board-observer';
@@ -11,6 +12,7 @@ export class Controller {
   private view: ProjectView | null = null;
   private observer?: BoardObserver;
   private readonly renderer = new SvgRenderer();
+  private readonly relationships = new RelationshipControls(() => this.refreshRelationships());
   private readonly results = new Map<string, IssueResult>();
   private pending = false;
   private generation = 0;
@@ -35,7 +37,7 @@ export class Controller {
     document.addEventListener('pointermove', () => { if (this.pointerActive) this.schedule(); }, options);
     document.addEventListener('dragover', this.schedule, options);
     window.addEventListener('popstate', this.navigation, options);
-    window.addEventListener('focus', this.refreshSettings, options);
+    window.addEventListener('focus', this.refreshSettings, { ...options, capture: false });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) void this.refreshSettings(); }, options);
     document.addEventListener('turbo:load', this.navigation, options);
     window.addEventListener('pagehide', () => this.destroy(), { once: true, signal: this.events.signal });
@@ -69,12 +71,16 @@ export class Controller {
   configure(settings: Settings): void {
     this.stateVersion++;
     this.settings = settings; this.generation++; this.pending = false; this.results.clear();
+    this.relationships.destroy();
     if (!settings.enabled || !settings.authenticated) { this.releaseBoard(); this.status = { state: 'off', cards: 0, edges: 0, failed: 0, errors: settings.authenticated ? [] : [{ code: 'AUTH_MISSING' }], truncated: false }; }
     this.schedule();
   }
+  refreshRelationships(): void {
+    this.generation++; this.pending = false; this.results.clear(); this.schedule();
+  }
   private releaseBoard(): void {
     this.generation++; this.pending = false; this.observer?.disconnect(); this.observer = undefined;
-    this.view = null; this.observedCards = []; this.renderer.destroy();
+    this.view = null; this.observedCards = []; this.renderer.destroy(); this.relationships.destroy();
   }
   schedule = (): void => { if (!this.frame) this.frame = requestAnimationFrame(() => { this.frame = 0; this.update(); }); };
   private update(): void {
@@ -85,7 +91,8 @@ export class Controller {
       if (view) this.observer = new BoardObserver(view.element, this.schedule);
     }
     if (!view) { this.status = { state: 'no-view', cards: 0, edges: 0, failed: 0, errors: [], truncated: false }; return; }
-    const allCards = extractCards(view.element, view.kind);
+    const candidates = extractCards(view.element, view.kind);
+    const allCards = this.relationships.update(candidates) ? extractCards(view.element, view.kind) : candidates;
     const unique = [...new Map(allCards.map(c => [issueKey(c.issue), c.issue])).values()];
     const included = new Set(unique.slice(0, MAX_ISSUES).map(issueKey));
     const cards = allCards.filter(c => included.has(issueKey(c.issue)));

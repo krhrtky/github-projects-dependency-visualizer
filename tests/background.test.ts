@@ -49,3 +49,50 @@ describe('background settings do not depend on sleeping tabs', () => {
    expect(session).not.toHaveProperty('token');
  });
 });
+
+describe('relationship writes respect session changes', () => {
+ const change: Request = { type: 'CHANGE_RELATIONSHIP', change: { issue: { owner: 'acme', repo: 'app', number: 2 }, related: { owner: 'acme', repo: 'api', number: 7 }, kind: 'blockedBy', action: 'add' } };
+ const sync: Request = { type: 'PROJECT_SYNC', project: { kind: 'orgs', owner: 'acme', number: 1 } };
+ const operations = [change, sync];
+ const settingsChanges: Request[] = [{ type: 'SET_ENABLED', enabled: false }, { type: 'SET_TOKEN', token: 'ghp_' + 'y'.repeat(36) }, { type: 'LOGOUT' }];
+
+ it.each(operations.flatMap(operation => settingsChanges.map(settingsChange => [operation, settingsChange] as const)))('rejects %j if %j finishes while its settings read is pending', async (operation, settingsChange) => {
+   const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: {} })));
+   vi.stubGlobal('fetch', fetcher);
+   await request({ type: 'SET_TOKEN', token: 'ghp_' + 'x'.repeat(36) });
+   await request({ type: 'SET_ENABLED', enabled: true });
+   const snapshot = { enabled: local.enabled };
+   let release: (() => void) | undefined;
+   const readLocal = chrome.storage.local.get as ReturnType<typeof vi.fn>;
+   readLocal.mockImplementationOnce(() => new Promise(resolve => { release = () => resolve(snapshot); }));
+   const pending = request(operation);
+   await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+   expect(await request(settingsChange)).toMatchObject({ ok: true });
+   release!();
+   expect(await pending).toEqual({ ok: false, error: { code: 'STALE' } });
+   expect(fetcher).not.toHaveBeenCalled();
+ });
+
+ it('serializes relationship writes and completes logout while a sent write is still pending', async () => {
+   let completeWrite: ((response: Response) => void) | undefined;
+   const fetcher = vi.fn((url: string, options: RequestInit) => {
+     if (options.method !== 'GET') return new Promise<Response>(resolve => { completeWrite = resolve; });
+     const parts = /^\/repos\/([^/]+)\/([^/]+)\/issues\/(\d+)$/.exec(new URL(url).pathname)!;
+     return Promise.resolve(new Response(JSON.stringify({ id: Number(parts[3]) * 100, number: Number(parts[3]), html_url: `https://github.com/${parts[1]}/${parts[2]}/issues/${parts[3]}` })));
+   });
+   vi.stubGlobal('fetch', fetcher);
+   await request({ type: 'SET_TOKEN', token: 'ghp_' + 'x'.repeat(36) });
+   await request({ type: 'SET_ENABLED', enabled: true });
+   const first = request(change);
+   await vi.waitFor(() => expect(completeWrite).toBeTypeOf('function'));
+   const second = request(change);
+   await vi.advanceTimersByTimeAsync(0);
+   expect(fetcher.mock.calls.filter(([, options]) => options.method === 'POST')).toHaveLength(1);
+   expect(await request({ type: 'LOGOUT' })).toEqual({ ok: true, data: { enabled: false, authenticated: false } });
+   expect(session).not.toHaveProperty('token');
+   completeWrite!(new Response(null, { status: 204 }));
+   expect(await first).toEqual({ ok: false, error: { code: 'STALE' } });
+   expect(await second).toEqual({ ok: false, error: { code: 'STALE' } });
+   expect(fetcher.mock.calls.filter(([, options]) => options.method === 'POST')).toHaveLength(1);
+ });
+});
