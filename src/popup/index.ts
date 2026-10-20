@@ -10,6 +10,7 @@ const analysis = document.querySelector<HTMLElement>('#analysis')!;
 const errors = document.querySelector<HTMLUListElement>('#errors')!;
 let actionError: PublicError | undefined;
 let busy = false;
+let updateVersion = 0;
 function showErrors(items: PublicError[]): void {
   errors.replaceChildren();
   for (const error of [...new Map(items.map(e => [`${e.code}:${e.retryAt}`, e])).values()]) {
@@ -17,8 +18,12 @@ function showErrors(items: PublicError[]): void {
   }
 }
 async function update(): Promise<void> {
+  if (busy) return;
+  const version = ++updateVersion;
+  const current = (): boolean => version === updateVersion && !busy;
   analysis.textContent = '';
   const reply = await send<Settings>({ type: 'GET_STATE' });
+  if (!current()) return;
   if (!reply.ok) { showErrors([reply.error]); return; }
   const settings = reply.data;
   auth.textContent = settings.authenticated ? 'PAT 設定済み（API 検証は取得時）' : 'PAT 未設定';
@@ -28,8 +33,10 @@ async function update(): Promise<void> {
   if (!settings.authenticated) problems.push({ code: 'AUTH_MISSING' });
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!current()) return;
     if (tab?.id === undefined) throw new Error();
     const status = await chrome.tabs.sendMessage(tab.id, { type: 'PAGE_STATUS' }) as PageStatus;
+    if (!current()) return;
     const states = { off: '表示は OFF です。', 'no-view': '対応する Project View を検出できません。Board・Table・Roadmap を開いてください。', 'no-cards': '表示中の Issue を識別できません。フィルタや DOM Adapter を確認してください。', loading: '依存関係を取得しています…', ready: '取得完了', partial: '一部の Issue を取得できません。取得できた関係のみ表示しています。', error: '依存関係を取得できません。' };
     const view = status.view ? `${{ board: 'Board', table: 'Table', roadmap: 'Roadmap' }[status.view]} / ` : '';
     board.textContent = `${view}${states[status.state]} ${status.view && status.view !== 'board' ? '項目' : 'カード'} ${status.cards} / 関係 ${status.edges} / 失敗 ${status.failed}${status.truncated ? '（上限200 Issue）' : ''}`;
@@ -38,10 +45,15 @@ async function update(): Promise<void> {
       analysis.textContent = `${data.maxDepth === null ? `循環 ${data.cycleNodes} 件・最長経路は未算出` : `依存の最大深さ ${data.maxDepth}`} / 分岐 ${data.branches} / 合流 ${data.merges}。${status.state === 'loading' ? '取得中の暫定値。' : status.failed || status.truncated ? '解析は不完全です。' : ''}画面右下のパネルで経路を絞り込めます。`;
     }
     problems.push(...status.errors);
-  } catch { board.textContent = '対象の GitHub Projects タブを開いてください。拡張機能を読み込んだ直後はタブを再読み込みしてください。'; }
+  } catch {
+    if (!current()) return;
+    board.textContent = '対象の GitHub Projects タブを開いてください。拡張機能を読み込んだ直後はタブを再読み込みしてください。';
+  }
   showErrors(problems);
 }
 async function action(request: Parameters<typeof send>[0]): Promise<void> {
+  if (busy) return;
+  updateVersion++;
   busy = true; document.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.disabled = true; });
   enabled.disabled = true; relationshipsVisible.disabled = true;
   try { const reply = await send<Settings>(request); actionError = reply.ok ? undefined : reply.error; }
